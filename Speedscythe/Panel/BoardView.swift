@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 import SwiftUI
 
 enum BoardEdit {
@@ -24,11 +25,13 @@ struct BoardView: View {
 
     let store: AppStore
     let preferences: Preferences
-    let state: PanelState
+    @Bindable var state: PanelState
     let columnWidth: CGFloat
     let onEvent: (BoardEvent) -> Void
     let onEdit: (BoardEdit) -> Void
     let onOpenSettings: () -> Void
+
+    @FocusState private var notesFocused: Bool
 
     var body: some View {
         let board = BoardModel(store: store, preferences: preferences)
@@ -38,12 +41,24 @@ struct BoardView: View {
                 PanelHeaderView(
                     store: store,
                     isEditing: state.boardState.isEditing,
+                    showsNotesField: state.boardState.showsNotesField,
                     canEdit: content == .board,
                     slotCount: preferences.slotCount,
                     onStop: { onEvent(.stopShortcut) },
                     onEditToggle: { onEvent(.editToggled) },
                     onEdit: onEdit
                 )
+                if state.boardState.showsNotesField {
+                    TextField("Notes", text: $state.notesDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 15))
+                        .focused($notesFocused)
+                        .disabled(state.boardState == .savingNotes)
+                        .onChange(of: state.boardState, initial: true) { _, boardState in
+                            // SwiftUI ignores the focus change in the update that inserts the field, because the field is not on screen yet.
+                            Task { notesFocused = boardState == .editingNotes }
+                        }
+                }
                 if let session = store.session, session.expiresSoon(at: .now) {
                     HStack(spacing: 12) {
                         Text("Harvest connection expires soon")
@@ -61,6 +76,8 @@ struct BoardView: View {
             }
             if content == .board {
                 columns(board: board)
+                    .opacity(state.boardState.showsNotesField ? 0.38 : 1)
+                    .allowsHitTesting(!state.boardState.showsNotesField)
                 Text(hint(for: board))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
@@ -202,7 +219,7 @@ struct BoardView: View {
     private func hint(for board: BoardModel) -> String {
         switch state.boardState {
         case .idle:
-            "\(Self.range(board.maxProjectNumber)) project, then \(Self.range(board.maxTaskKeyCount)) task · or click any tile · Esc close"
+            "\(Self.range(board.maxProjectNumber)) project, then \(Self.range(board.maxTaskKeyCount)) task · or click any tile\(notesHint) · Esc close"
         case .projectSelected(let column) where board.columns.indices.contains(column):
             "\(board.columns[column].project.name): press \(Self.range(min(9, board.columns[column].tasks.count))) for a task · Esc back"
         case .projectSelected:
@@ -211,7 +228,16 @@ struct BoardView: View {
             "Starting timer…"
         case .editing:
             "Click a column to pick its project · Esc done"
+        case .editingNotes:
+            "Enter save · Esc cancel"
+        case .savingNotes:
+            "Saving notes…"
         }
+    }
+
+    private var notesHint: String {
+        guard store.runningEntry != nil, let shortcut = KeyboardShortcuts.getShortcut(for: .editNotes) else { return "" }
+        return " · \(shortcut.description) notes"
     }
 
     private static func range(_ count: Int) -> String {

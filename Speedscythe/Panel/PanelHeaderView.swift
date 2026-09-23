@@ -4,6 +4,7 @@ import SwiftUI
 struct PanelHeaderView: View {
     let store: AppStore
     let isEditing: Bool
+    let showsNotesField: Bool
     let canEdit: Bool
     let slotCount: Int
     let onStop: () -> Void
@@ -23,6 +24,13 @@ struct PanelHeaderView: View {
                     Text("\(runningEntry.project.name) · \(runningEntry.task.name)")
                         .font(.system(size: 15, weight: .semibold))
                         .lineLimit(1)
+                    if !showsNotesField, let notes = runningEntry.notes, !notes.isEmpty {
+                        Text(notes)
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .layoutPriority(-1)
+                    }
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         Text(ElapsedFormat.hoursMinutesSeconds(store.runningElapsed(at: context.date) ?? 0))
                             .font(.system(size: 14, design: .monospaced))

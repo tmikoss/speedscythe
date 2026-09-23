@@ -4,6 +4,7 @@ struct TimeEntry: Codable, Equatable {
     let id: Int
     let spentDate: String
     let hours: Double
+    let notes: String?
     let isRunning: Bool
     let isLocked: Bool
     let updatedAt: Date

@@ -8,6 +8,8 @@ import SwiftUI
 final class PanelState {
     var boardState: BoardState = .idle
     var errorMessage: String?
+    var notesDraft = ""
+    var notesEntryID: Int?
 }
 
 extension BoardModel {
@@ -218,9 +220,14 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func handle(_ event: BoardEvent) {
         let (boardState, effect) = BoardState.reduce(state.boardState, event, board: board)
-        let editingChanged = boardState.isEditing != state.boardState.isEditing
+        let layoutChanged = boardState.isEditing != state.boardState.isEditing || boardState.showsNotesField != state.boardState.showsNotesField
+        if boardState == .editingNotes, !state.boardState.showsNotesField, let runningEntry = store.runningEntry {
+            state.notesDraft = (runningEntry.notes ?? "").replacingOccurrences(of: "\n", with: " ")
+            state.notesEntryID = runningEntry.id
+            panel.makeFirstResponder(hostingView)
+        }
         state.boardState = boardState
-        if editingChanged {
+        if layoutChanged {
             relayout()
         }
         switch effect {
@@ -246,6 +253,18 @@ final class PanelController: NSObject, NSWindowDelegate {
                     handle(.startFailed)
                 }
             }
+        case .saveNotes:
+            guard let entryID = state.notesEntryID else { return }
+            state.errorMessage = nil
+            Task {
+                do {
+                    try await timerService.updateNotes(entryID: entryID, notes: state.notesDraft)
+                    handle(.notesSaved)
+                } catch {
+                    state.errorMessage = error.localizedDescription
+                    handle(.notesFailed)
+                }
+            }
         case nil:
             break
         }
@@ -256,8 +275,12 @@ final class PanelController: NSObject, NSWindowDelegate {
         if event.keyCode == 53 {
             return .escape
         }
-        if let shortcut = KeyboardShortcuts.Shortcut(event: event), shortcut == KeyboardShortcuts.getShortcut(for: .stopTimer) {
+        let shortcut = KeyboardShortcuts.Shortcut(event: event)
+        if let shortcut, shortcut == KeyboardShortcuts.getShortcut(for: .stopTimer) {
             return .stopShortcut
+        }
+        if let shortcut, shortcut == KeyboardShortcuts.getShortcut(for: .editNotes), store.runningEntry != nil {
+            return .notesShortcut
         }
         if modifiers.isEmpty, let digit = Self.digitKeyCodes[event.keyCode] {
             return .digit(digit)
@@ -275,12 +298,28 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated {
-                if let self, let boardEvent = self.boardEvent(for: event) {
-                    self.handle(boardEvent)
+            let passesThrough = MainActor.assumeIsolated {
+                guard let self else { return false }
+                switch self.state.boardState {
+                case .editingNotes:
+                    switch event.keyCode {
+                    case 53:
+                        self.handle(.escape)
+                    case 36, 76:
+                        self.handle(.submit)
+                    default:
+                        return true
+                    }
+                case .savingNotes:
+                    break
+                default:
+                    if let boardEvent = self.boardEvent(for: event) {
+                        self.handle(boardEvent)
+                    }
                 }
+                return false
             }
-            return nil
+            return passesThrough ? event : nil
         }
     }
 

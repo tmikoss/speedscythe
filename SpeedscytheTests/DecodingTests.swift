@@ -45,6 +45,7 @@ final class DecodingTests: XCTestCase {
                 id: 636_709_355,
                 spentDate: "2017-03-02",
                 hours: 2.11,
+                notes: "Adding CSS styling",
                 isRunning: false,
                 isLocked: true,
                 updatedAt: try Date("2017-06-27T16:47:14Z", strategy: .iso8601),

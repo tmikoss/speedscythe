@@ -5,10 +5,12 @@ enum BoardState: Equatable {
     case projectSelected(column: Int)
     case starting(column: Int, task: Int)
     case editing
+    case editingNotes
+    case savingNotes
 
     var selectedColumn: Int? {
         switch self {
-        case .idle, .editing:
+        case .idle, .editing, .editingNotes, .savingNotes:
             nil
         case .projectSelected(let column), .starting(let column, _):
             column
@@ -17,6 +19,10 @@ enum BoardState: Equatable {
 
     var isEditing: Bool {
         self == .editing
+    }
+
+    var showsNotesField: Bool {
+        self == .editingNotes || self == .savingNotes
     }
 }
 
@@ -29,11 +35,16 @@ enum BoardEvent: Equatable {
     case editToggled
     case startSucceeded
     case startFailed
+    case notesShortcut
+    case submit
+    case notesSaved
+    case notesFailed
 }
 
 enum BoardEffect: Equatable {
     case start(projectID: Int, taskID: Int)
     case stop
+    case saveNotes
     case close
 }
 
@@ -45,6 +56,22 @@ extension BoardState {
         case (.starting, .startFailed):
             return (.idle, nil)
         case (.starting, _), (_, .startSucceeded), (_, .startFailed):
+            return (state, nil)
+        case (.savingNotes, .notesSaved):
+            return (.idle, .close)
+        case (.savingNotes, .notesFailed):
+            return (.editingNotes, nil)
+        case (.savingNotes, _), (_, .notesSaved), (_, .notesFailed):
+            return (state, nil)
+        case (.editingNotes, .escape):
+            return (.idle, nil)
+        case (.editingNotes, .submit):
+            return (.savingNotes, .saveNotes)
+        case (.editingNotes, _), (_, .submit):
+            return (state, nil)
+        case (.idle, .notesShortcut), (.projectSelected, .notesShortcut):
+            return (.editingNotes, nil)
+        case (_, .notesShortcut):
             return (state, nil)
         case (_, .stopShortcut):
             return (state, .stop)

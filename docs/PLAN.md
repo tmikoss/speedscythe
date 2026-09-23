@@ -44,7 +44,7 @@ These block milestone M1. Ask Toms for them if they are missing, don't invent va
 | Accounts | One Harvest account per install |
 
 ### Out of scope for v1
-Editing notes/descriptions, editing or deleting entries, offline queue, multiple accounts, auto-update, App Store sandboxing, **auto-tracking (phase 2, see §12)**.
+Editing other entry fields or deleting entries, offline queue, multiple accounts, auto-update, App Store sandboxing, **auto-tracking (phase 2, see §12)**.
 
 ---
 
@@ -80,6 +80,7 @@ Content-Type: application/json   (for bodies)
 | Start timer | `POST /v2/time_entries` body `{project_id, task_id, spent_date}` | Omitting `hours` (duration accounts) or `ended_time` (timestamp accounts) creates a running timer. Send only these three fields; it works in both modes |
 | Continue entry | `PATCH /v2/time_entries/<id>/restart` | Only works on a stopped entry. **Use the returned entry**: in timestamp-mode accounts the response can be a *new* entry with a different `id` |
 | Stop timer | `PATCH /v2/time_entries/<id>/stop` | Only works on a running entry |
+| Update notes | `PATCH /v2/time_entries/<id>` body `{notes}` | Returns the full entry. Works on a running entry (checked in M5b); the docs do not say so |
 
 `spent_date` is the user's **local** calendar date, `yyyy-MM-dd`.
 
@@ -179,7 +180,8 @@ Sample names and times in the sketches are placeholders.
 - When keyboard selection targets a tile below the fold, scroll it into view.
 
 ### 4.3 Header
-- Left: running indicator (accent dot, "Running", `Project · Task`, elapsed `h:mm:ss` ticking every second while visible). No running timer → secondary text "No timer running".
+- Left: running indicator (accent dot, "Running", `Project · Task`, the notes of the entry, elapsed `h:mm:ss` ticking every second while visible). No running timer → secondary text "No timer running".
+- The notes are secondary text on one line. They truncate first, so the elapsed time stays visible. They hide while the notes field shows (§4.8).
 - Right: a pencil button that toggles edit mode (§4.7), and a "Stop timer" button with a key cap that shows the stop shortcut (default `⌫`). The Stop button is disabled when nothing is running. In edit mode, − and + buttons appear before the pencil button.
 - The hint text (changes by state, exact strings in sketches) is centered below the column grid, not in the header. The sketches show it in the header; the header was too narrow for it.
 - Error banner slot below the header (hidden normally). Also used for "Harvest connection expires soon — Reconnect" (§6.4).
@@ -229,6 +231,15 @@ The user edits the board layout in the panel, not in Settings.
 - − removes the last column and clears its pin. + adds a column. N stays in 4–9.
 - After each change, the panel resizes and stays centered.
 
+### 4.8 Notes editing
+The user sets the notes of the running entry in the panel.
+- Enter: the notes shortcut (`KeyboardShortcuts.Name.editNotes`, default `N`) in `idle` or `projectSelected`. The shortcut does nothing when no timer runs, in edit mode, or while a timer starts.
+- A full-width single-line text field shows below the header. It contains the current notes, with newlines changed to spaces, and has keyboard focus. The columns dim to 38% opacity and ignore clicks.
+- Enter saves the notes and closes the panel. Esc discards the draft and goes back to the board.
+- While the save runs, the field is disabled and the hint shows "Saving notes…". If the save fails, the error banner shows the message, and the field keeps the draft.
+- The save goes to the entry that ran when the user pressed the shortcut. If that timer stops during typing, the notes still go to that entry.
+- The idle hint adds "· N notes" (the current shortcut) while a timer runs.
+
 ---
 
 ## 5. Keyboard and mouse
@@ -251,6 +262,8 @@ Handle keys with an `NSEvent.addLocalMonitorForEvents(matching: .keyDown)` monit
 - A project with one task still waits for its task digit (consistent two-key rhythm).
 - The stop shortcut in any open state → `TimerService.stop()`. It is `KeyboardShortcuts.Name.stopTimer`, default `⌫`. No handler is attached to it, so it is never a global hotkey. The key monitor compares each key event with it. The panel buttons are not focusable, so Space and Return never press them.
 - The pencil button toggles `editing` from `idle` or `projectSelected`. In `editing`, Esc or the pencil button goes back to `idle`, and digits and clicks do nothing (§4.7).
+- The notes shortcut goes from `idle` or `projectSelected` to `editingNotes` while a timer runs (§4.8). In `editingNotes`, Esc goes back to `idle`, and Return or keypad Enter goes to `savingNotes`. `savingNotes` goes to `idle` and closes the panel on success, or back to `editingNotes` on failure. Both states ignore all other events, including the stop shortcut.
+- In `editingNotes`, the key monitor consumes only Esc, Return, and keypad Enter. All other keys go to the text field. This is necessary because the stop shortcut is plain `⌫`, which the user also needs to delete text. In `savingNotes`, the key monitor consumes all keys.
 - `/` → search (M6, optional; see §9).
 - Mouse: clicking any tile starts it from any state. Clicking a column header = pressing its digit.
 
@@ -298,7 +311,10 @@ Public API (phase 2 will reuse it):
 ```swift
 func start(projectID: Int, taskID: Int, source: StartSource) async throws   // .picker, later .autoTracking
 func stop() async throws
+func updateNotes(entryID: Int, notes: String) async throws
 ```
+`updateNotes` sends `PATCH /time_entries/<id> {notes}` and updates the store from the returned entry. It does not trigger a refresh, because the response is the full entry.
+
 `start` logic:
 1. If the running entry already has this project + task → do nothing (success).
 2. Else, if Preferences.continueToday is on and today has a **stopped, unlocked** entry with this project + task → `PATCH restart` on the most recently updated one.
@@ -342,7 +358,7 @@ The layout follows System Settings: a `NavigationSplitView` with a sidebar of pa
 
 - **Account:** "Harvest" section with "Connected as <name> · <account>", "Connection expires" (relative date), a warning when less than 24 h remain (§6.4), and buttons Connect, or Disconnect and Reconnect.
 - **General:**
-  - "Shortcuts" section: "Open picker" and "Stop timer in the panel" (`KeyboardShortcuts.Recorder` for `.openPicker` and `.stopTimer`), and a "Reset shortcuts" button. The button resets both shortcuts to their defaults. The Recorder accepts only shortcuts with a modifier, and ⌫ in the Recorder clears the shortcut. The button is the only way back to the plain `⌫` default.
+  - "Shortcuts" section: "Open picker", "Stop timer in the panel", and "Edit notes in the panel" (`KeyboardShortcuts.Recorder` for `.openPicker`, `.stopTimer`, and `.editNotes`), and a "Reset shortcuts" button. The button resets all three shortcuts to their defaults. The Recorder accepts only shortcuts with a modifier, and ⌫ in the Recorder clears the shortcut. The button is the only way back to the plain `⌫` default.
   - "Timers" section: toggle "Continue the matching entry from today" (default on), with the subtitle "Off: every start creates a new entry."
   - "Startup" section: "Launch at login" via `SMAppService.mainApp` (spike S8). If the status is `.requiresApproval`, a note tells the user to allow Speedscythe in System Settings → General → Login Items. A `register()` or `unregister()` error shows below the toggle.
 
@@ -395,6 +411,10 @@ Each milestone ends with tests passing, the app running, and the acceptance chec
   SlotResolver with the full test list from §6.6; panel edit mode (§4.7); N slots.
   *Accept:* a pinned project always occupies its slot; − and + change the column count; recent columns only change number when a new project enters.
 
+- [x] **M5b — Running entry notes**
+  `notes` on `TimeEntry`, `PATCH /time_entries/<id>`, `TimerService.updateNotes`, the `editingNotes` and `savingNotes` states with tests, the notes field and header notes (§4.3, §4.8), and the "Edit notes in the panel" Recorder.
+  *Accept:* with a timer running, the header shows its notes; N opens the field with the notes and the field has keyboard focus; typing and ⌫ edit the text and do not stop the timer; Esc goes back to the board; Enter saves and closes the panel, and the Harvest web UI shows the new notes on the running entry; N does nothing with no timer running or in edit mode; "Reset shortcuts" restores N.
+
 - [ ] **M6 — Polish**
   Column overflow scrolling + tasks past 9 (§4.2), all empty/error states (§4.6), expiry banner + 401 handling (§6.4), launch at login, hover states. Optional: `/` search (a field that fuzzy-filters tiles by "project task" text; Enter starts the top match; Esc clears then closes).
   *Accept:* a project with 12 tasks scrolls inside its column, and tasks 10–12 are clickable; revoking the token in Harvest leads to the reconnect screen. Record S7/S8.
@@ -417,7 +437,7 @@ Each milestone ends with tests passing, the app running, and the acceptance chec
 ## 11. Things that will bite
 
 - **Keychain prompts after every rebuild/update** with ad-hoc signing; expected. In development, sign with a stable local "Apple Development" identity (a free Apple ID in Xcode) to avoid them.
-- **Non-activating panel + text input:** fine for key events via the local monitor. If `/` search needs a real text field, test that it takes focus inside the panel.
+- **Non-activating panel + text input:** fine for key events via the local monitor. A SwiftUI `TextField` in the panel takes focus (M5b notes field) with two steps. PanelController calls `panel.makeFirstResponder(hostingView)`, because the first responder is otherwise the panel itself. The view then sets its `@FocusState` in a `Task`, because a focus change in the update that inserts the field has no effect. `.defaultFocus` does not work here.
 - **Full-screen spaces:** without `.fullScreenAuxiliary` the panel opens on another space. Test with a full-screen app early.
 - **Time zones:** `spent_date` and "today" use the local calendar, not UTC.
 - **Locked entries** (`is_locked`) can't be restarted; TimerDecision must skip them.
@@ -441,4 +461,5 @@ Short record of why things are the way they are, so they don't get re-litigated.
 - Swift over Tauri: the hard parts are OS integration (panel, hotkey, focus, later Accessibility); the UI is one screen.
 - Pinned slots plus in-place recent slots: a pinned project never moves; recent numbers change only when the set of projects changes.
 - Edit mode in the panel over a Favorites tab in Settings: the user edits the board on the same grid that they use, so a pin goes to the exact slot number.
+- Notes editing in the panel (a single-line field under the header, Enter saves and closes) over keeping notes out of scope: the user sets notes on the running entry without the Harvest web UI.
 - All tasks shown, no per-project task filter: tasks past 9 are click-only; columns scroll past 6 tiles. The only per-project task setting is the order, which the user changes by drag in edit mode.

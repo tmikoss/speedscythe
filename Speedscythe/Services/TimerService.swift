@@ -4,6 +4,7 @@ protocol TimeEntryAPI {
     func createTimeEntry(projectID: Int, taskID: Int, spentDate: String) async throws -> TimeEntry
     func restartTimeEntry(id: Int) async throws -> TimeEntry
     func stopTimeEntry(id: Int) async throws -> TimeEntry
+    func updateTimeEntry(id: Int, notes: String) async throws -> TimeEntry
 }
 
 extension HarvestClient: TimeEntryAPI {}
@@ -77,6 +78,12 @@ final class TimerService {
         let entry = try await rejectingSession { try await makeAPI(session).stopTimeEntry(id: runningEntry.id) }
         context.apply(updatedEntry: entry)
         context.refreshInBackground()
+    }
+
+    func updateNotes(entryID: Int, notes: String) async throws {
+        guard let session = context.session else { throw TimerError.notConnected }
+        let entry = try await rejectingSession { try await makeAPI(session).updateTimeEntry(id: entryID, notes: notes) }
+        context.apply(updatedEntry: entry)
     }
 
     private func rejectingSession(_ request: () async throws -> TimeEntry) async throws -> TimeEntry {

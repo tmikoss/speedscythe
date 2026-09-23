@@ -8,6 +8,7 @@ enum TestData {
         taskID: Int,
         spentDate: String = Date.now.spentDate,
         hours: Double = 1,
+        notes: String? = nil,
         isRunning: Bool = false,
         isLocked: Bool = false,
         updatedAt: TimeInterval = 0
@@ -16,6 +17,7 @@ enum TestData {
             id: id,
             spentDate: spentDate,
             hours: hours,
+            notes: notes,
             isRunning: isRunning,
             isLocked: isLocked,
             updatedAt: Date(timeIntervalSince1970: updatedAt),

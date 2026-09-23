@@ -112,6 +112,40 @@ final class TimerServiceTests: XCTestCase {
         }
     }
 
+    func testUpdateNotesUpdatesEntryAndAppliesIt() async throws {
+        api.response = TestData.entry(id: 3, projectID: 10, taskID: 20, notes: "Review", isRunning: true)
+
+        try await service.updateNotes(entryID: 3, notes: "Review")
+
+        XCTAssertEqual(api.calls, [.update(id: 3, notes: "Review")])
+        XCTAssertEqual(context.appliedEntries.map(\.notes), ["Review"])
+        XCTAssertEqual(context.refreshCount, 0)
+    }
+
+    func testRejectedTokenOnUpdateNotesRejectsSession() async {
+        api.error = HarvestError.unauthorized
+
+        do {
+            try await service.updateNotes(entryID: 3, notes: "Review")
+            XCTFail("Expected an error")
+        } catch {
+            XCTAssertEqual(context.rejectedSessionCount, 1)
+        }
+        XCTAssertEqual(context.appliedEntries.count, 0)
+    }
+
+    func testUpdateNotesWithoutSessionThrows() async {
+        context.session = nil
+
+        do {
+            try await service.updateNotes(entryID: 3, notes: "Review")
+            XCTFail("Expected an error")
+        } catch {
+            XCTAssertTrue(error is TimerError)
+        }
+        XCTAssertEqual(api.calls, [])
+    }
+
     func testOtherErrorsKeepSession() async {
         api.error = HarvestError.api(status: 422, message: "Invalid")
 
@@ -152,6 +186,7 @@ private final class FakeTimeEntryAPI: TimeEntryAPI {
         case create(projectID: Int, taskID: Int, spentDate: String)
         case restart(id: Int)
         case stop(id: Int)
+        case update(id: Int, notes: String)
     }
 
     var calls: [Call] = []
@@ -175,6 +210,11 @@ private final class FakeTimeEntryAPI: TimeEntryAPI {
         if holdsStop {
             await withCheckedContinuation { stopGate = $0 }
         }
+        return try result()
+    }
+
+    func updateTimeEntry(id: Int, notes: String) async throws -> TimeEntry {
+        calls.append(.update(id: id, notes: notes))
         return try result()
     }
 

@@ -43,6 +43,7 @@ final class RecentProjectOrderTests: XCTestCase {
             id: Int.random(in: 1...1_000_000),
             spentDate: "2026-09-23",
             hours: 1,
+            notes: nil,
             isRunning: false,
             isLocked: false,
             updatedAt: Date(timeIntervalSince1970: updatedAt),

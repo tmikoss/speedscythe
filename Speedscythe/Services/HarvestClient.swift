@@ -64,6 +64,11 @@ struct HarvestClient {
         try await Self.send(URL(string: "https://api.harvestapp.com/v2/time_entries/\(id)/stop")!, method: "PATCH", accessToken: accessToken, accountID: accountID)
     }
 
+    func updateTimeEntry(id: Int, notes: String) async throws -> TimeEntry {
+        let body = try JSONEncoder().encode(TimeEntryNotes(notes: notes))
+        return try await Self.send(URL(string: "https://api.harvestapp.com/v2/time_entries/\(id)")!, method: "PATCH", body: body, accessToken: accessToken, accountID: accountID)
+    }
+
     static func accounts(accessToken: String) async throws -> [HarvestAccount] {
         let response: AccountsResponse = try await send(URL(string: "https://id.getharvest.com/api/v2/accounts")!, accessToken: accessToken, accountID: nil)
         return response.accounts
@@ -90,6 +95,10 @@ struct HarvestClient {
             case taskID = "task_id"
             case spentDate = "spent_date"
         }
+    }
+
+    private struct TimeEntryNotes: Encodable {
+        let notes: String
     }
 
     private struct Links: Decodable {

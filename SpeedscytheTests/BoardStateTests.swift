@@ -100,6 +100,48 @@ final class BoardStateTests: XCTestCase {
         XCTAssertTrue(BoardState.reduce(.editing, .stopShortcut, board: board) == (.editing, .stop))
     }
 
+    func testNotesShortcutOpensNotesFieldFromOpenStates() {
+        XCTAssertTrue(BoardState.reduce(.idle, .notesShortcut, board: board) == (.editingNotes, nil))
+        XCTAssertTrue(BoardState.reduce(.projectSelected(column: 1), .notesShortcut, board: board) == (.editingNotes, nil))
+    }
+
+    func testNotesShortcutIsIgnoredInEditModeAndWhileStarting() {
+        XCTAssertTrue(BoardState.reduce(.editing, .notesShortcut, board: board) == (.editing, nil))
+        XCTAssertTrue(BoardState.reduce(.starting(column: 0, task: 0), .notesShortcut, board: board) == (.starting(column: 0, task: 0), nil))
+    }
+
+    func testEscapeCancelsNotes() {
+        XCTAssertTrue(BoardState.reduce(.editingNotes, .escape, board: board) == (.idle, nil))
+    }
+
+    func testSubmitSavesNotes() {
+        XCTAssertTrue(BoardState.reduce(.editingNotes, .submit, board: board) == (.savingNotes, .saveNotes))
+    }
+
+    func testEditingNotesIgnoresOtherInput() {
+        for event in [BoardEvent.digit(1), .stopShortcut, .columnClicked(0), .tileClicked(column: 0, task: 0), .editToggled, .notesShortcut] {
+            XCTAssertTrue(BoardState.reduce(.editingNotes, event, board: board) == (.editingNotes, nil), "\(event)")
+        }
+    }
+
+    func testSavedNotesClose() {
+        XCTAssertTrue(BoardState.reduce(.savingNotes, .notesSaved, board: board) == (.idle, .close))
+    }
+
+    func testFailedNotesReturnToEditingNotes() {
+        XCTAssertTrue(BoardState.reduce(.savingNotes, .notesFailed, board: board) == (.editingNotes, nil))
+    }
+
+    func testSavingNotesIgnoresInput() {
+        for event in [BoardEvent.digit(1), .escape, .submit, .stopShortcut, .columnClicked(1), .tileClicked(column: 1, task: 0), .editToggled, .notesShortcut] {
+            XCTAssertTrue(BoardState.reduce(.savingNotes, event, board: board) == (.savingNotes, nil), "\(event)")
+        }
+    }
+
+    func testSubmitIsIgnoredOutsideNotes() {
+        XCTAssertTrue(BoardState.reduce(.idle, .submit, board: board) == (.idle, nil))
+    }
+
     func testSelectedColumnThatDisappearedIgnoresDigits() {
         let smallerBoard = TestData.board(taskCounts: [3])
         XCTAssertTrue(BoardState.reduce(.projectSelected(column: 2), .digit(1), board: smallerBoard) == (.projectSelected(column: 2), nil))

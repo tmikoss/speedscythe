@@ -13,9 +13,10 @@ struct GeneralTab: View {
             Section("Shortcuts") {
                 KeyboardShortcuts.Recorder("Open picker", name: .openPicker)
                 KeyboardShortcuts.Recorder("Stop timer in the panel", name: .stopTimer)
+                KeyboardShortcuts.Recorder("Edit notes in the panel", name: .editNotes)
                 HStack {
                     Spacer()
-                    Button("Reset shortcuts") { KeyboardShortcuts.reset(.openPicker, .stopTimer) }
+                    Button("Reset shortcuts") { KeyboardShortcuts.reset(.openPicker, .stopTimer, .editNotes) }
                 }
             }
             Section("Timers") {
