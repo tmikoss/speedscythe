@@ -4,34 +4,44 @@ struct AccountTab: View {
     let store: AppStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let session = store.auth.session {
-                Text(connectionText)
-                Text("Expires \(session.expiresAt, format: .relative(presentation: .named))")
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Button("Reconnect") { store.auth.connect() }
-                    Button("Disconnect") { store.auth.disconnect() }
+        Form {
+            Section("Harvest") {
+                if let session = store.auth.session {
+                    LabeledContent("Connected as", value: connectionText)
+                    LabeledContent("Connection expires") {
+                        Text(session.expiresAt, format: .relative(presentation: .named))
+                    }
+                    if session.expiresSoon(at: .now) {
+                        Text("Harvest connection expires soon. Reconnect to keep timers working.")
+                            .foregroundStyle(.orange)
+                    }
+                } else {
+                    LabeledContent("Status", value: "Not connected")
                 }
-            } else {
-                Text("Not connected to Harvest")
-                Button("Connect") { store.auth.connect() }
-            }
-            if store.auth.isConnecting {
-                Text("Waiting for Harvest in your browser…")
-                    .foregroundStyle(.secondary)
-            }
-            if let errorMessage = store.auth.errorMessage ?? store.errorMessage {
-                Text(errorMessage)
-                    .foregroundStyle(.red)
+                if store.auth.isConnecting {
+                    Text("Waiting for Harvest in your browser…")
+                        .foregroundStyle(.secondary)
+                }
+                if let errorMessage = store.auth.errorMessage ?? store.errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                }
+                HStack {
+                    Spacer()
+                    if store.auth.session != nil {
+                        Button("Disconnect") { store.auth.disconnect() }
+                        Button("Reconnect") { store.auth.connect() }
+                    } else {
+                        Button("Connect") { store.auth.connect() }
+                    }
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
+        .formStyle(.grouped)
     }
 
     private var connectionText: String {
-        guard let user = store.user, let company = store.company else { return "Connected" }
-        return "Connected as \(user.firstName) \(user.lastName) · \(company.name)"
+        guard let user = store.user, let company = store.company else { return "Unknown user" }
+        return "\(user.firstName) \(user.lastName) · \(company.name)"
     }
 }

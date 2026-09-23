@@ -38,7 +38,7 @@ These block milestone M1. Ask Toms for them if they are missing, don't invent va
 | Token storage | Keychain (generic password) |
 | Picker UI | "Board": all N slot projects as columns, their tasks as tiles. See sketches |
 | Keyboard | Hotkey opens → digit selects project → digit selects task → timer starts, panel closes |
-| Stopping | Manual only (⌘⌫ in the panel, or the menu bar menu). Nothing ever stops a timer automatically |
+| Stopping | Manual only (the stop shortcut in the panel, default ⌫, or the menu bar menu). Nothing ever stops a timer automatically |
 | Theme | Follows system light/dark automatically |
 | Distribution | Unsigned (ad-hoc signed) zip on GitHub Releases. No App Store, no notarization for now |
 | Accounts | One Harvest account per install |
@@ -111,7 +111,7 @@ Swift's concurrency `Task` type collides with a Harvest "task" model. Name the m
 │  SettingsWindowController ──edits──▶ Preferences   CacheStore (JSON file)  │
 │                                     (UserDefaults)  KeychainStore          │
 │                                                                            │
-│  SlotResolver (pure function: favorites + recents + previous slots → slots) │
+│  SlotResolver (pure function: pins + recents + previous slots → slots)      │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -132,9 +132,9 @@ Speedscythe/
                   CacheStore.swift, KeychainStore.swift, Preferences.swift, HotkeyService.swift
   Board/          BoardState.swift, SlotResolver.swift, BoardModel.swift (view-ready columns/tiles)
   Panel/          PickerPanel.swift (NSPanel subclass), PanelController.swift,
-                  BoardView.swift, ProjectColumnView.swift, TaskTileView.swift, KeyCapView.swift, PanelHeaderView.swift
+                  BoardView.swift, ProjectColumnView.swift, EditSlotView.swift, TaskTileView.swift, KeyCapView.swift, PanelHeaderView.swift
   StatusItem/     StatusItemController.swift
-  Settings/       SettingsWindowController.swift, SettingsView.swift, AccountTab.swift, GeneralTab.swift, FavoritesTab.swift
+  Settings/       SettingsWindowController.swift, SettingsView.swift, AccountTab.swift, GeneralTab.swift
   Resources/      Assets.xcassets (color sets, app icon), Info.plist, Speedscythe.entitlements
 SpeedscytheTests/
   SlotResolverTests.swift, BoardStateTests.swift, TimerDecisionTests.swift,
@@ -167,20 +167,21 @@ Sample names and times in the sketches are placeholders.
 - Position: centered on the screen containing `NSEvent.mouseLocation`, using that screen's `visibleFrame`.
 - Because the panel is non-activating, the previously active app stays active; dismissing the panel leaves focus where it was. Do not call `NSApp.activate` for the panel.
 - Hide on: Esc at top level, successful timer start, `windowDidResignKey` (click outside), hotkey pressed again (toggle).
-- Every show resets `BoardState` to `.idle`.
+- Every show resets `BoardState` to `.idle`. "Edit board…" in the menu bar menu shows the panel in `.editing` (§4.7).
 
 ### 4.2 Layout
 - Padding 28 pt; header row 40 pt; 20 pt gap; then the column grid.
-- Columns: one per slot (N, default 6, max 9). Column width ~164 pt, gap 8 pt. Panel width = columns + gaps + padding, clamped to `visibleFrame.width - 80`; if clamped, shrink columns (min ~120 pt).
+- Columns: one per slot (N in 4–9, default 6). Column width ~164 pt, gap 8 pt. Panel width = columns + gaps + padding, at least the width of 4 columns, clamped to `visibleFrame.width - 80`; if clamped, shrink columns (min ~120 pt).
 - Column: 8 pt inner padding, 16 pt radius. Header = key cap + project name (15 pt semibold). If two visible projects share a name, append the client name in secondary text.
 - Tile: height 88 pt, radius 12, 12 pt padding. Top row: key cap (left) + status text (right). Bottom: task name (15 pt medium).
-- **Tasks:** show all active task assignments, in the order the API returns them (see spike S6). Tasks 1–9 get key caps; tasks 10+ get no key cap and are click-only.
+- **Tasks:** show all active task assignments. A project with a saved task order (§4.7) shows those tasks first, in the saved order, then the other tasks in API order. Otherwise use the order the API returns (see spike S6). Tasks 1–9 get key caps; tasks 10+ get no key cap and are click-only.
 - **Overflow:** a column shows at most 6 tiles, then scrolls vertically inside itself (`ScrollView`). Panel height follows the tallest column up to that cap. Shorter columns pad with faint dashed placeholders up to the tallest column's visible tile count, as in the sketches.
 - When keyboard selection targets a tile below the fold, scroll it into view.
 
 ### 4.3 Header
 - Left: running indicator (accent dot, "Running", `Project · Task`, elapsed `h:mm:ss` ticking every second while visible). No running timer → secondary text "No timer running".
-- Right: hint text (changes by state, exact strings in sketches) + "Stop timer" button with `⌘⌫` key cap. Disabled when nothing is running.
+- Right: a pencil button that toggles edit mode (§4.7), and a "Stop timer" button with a key cap that shows the stop shortcut (default `⌫`). The Stop button is disabled when nothing is running. In edit mode, − and + buttons appear before the pencil button.
+- The hint text (changes by state, exact strings in sketches) is centered below the column grid, not in the header. The sketches show it in the header; the header was too narrow for it.
 - Error banner slot below the header (hidden normally). Also used for "Harvest connection expires soon — Reconnect" (§6.4).
 
 ### 4.4 Tile states
@@ -208,10 +209,25 @@ Add these color sets to `Assets.xcassets` with Any/Dark variants:
 Text contrast must stay ≥ 4.5:1 in both themes.
 
 ### 4.6 Empty and error states (inside the panel)
-- **Not connected:** centered message "Connect your Harvest account to start timers" + button "Open Settings".
+- **Not connected:** centered message "Connect your Harvest account to start timers", the last error (for example after a `401`), and buttons "Connect" (runs `connect()`) and "Open Settings". While the browser flow runs, "Waiting for Harvest in your browser…" replaces the error.
 - **Connected, cache empty, first fetch in flight:** "Loading projects…".
+- **Connected, cache empty, first fetch failed:** "Speedscythe cannot load your projects", the error, and a "Try Again" button.
 - **No project assignments:** "No projects are assigned to you in Harvest."
 - **Start/stop failed:** banner with the API error message; panel stays open.
+- **Refresh failed while cached data shows:** the same banner with the refresh error.
+- In all states except the board, the header hides the pencil button.
+- While the panel is visible, PanelController tracks the board, the content state, and the error messages with `withObservationTracking`. When one changes, the panel resizes and stays centered.
+
+### 4.7 Edit mode
+The user edits the board layout in the panel, not in Settings.
+- Enter: the pencil button in the header, or "Edit board…" in the menu bar menu. Leave: the pencil button again, or Esc.
+- The grid shows one column for each slot (N), also for empty slots. Digits and tile clicks do nothing. The stop shortcut still stops the timer.
+- A pinned slot shows its project name, a clear button (`xmark.circle.fill`), a subtle fill, and a solid border. An unpinned slot shows the recent project that fills it now (or "Recent"), a dashed border, and dimmed tiles.
+- A click on a column opens an `NSMenu` with all active projects, grouped by client under section headers. The current pin has a check mark. Projects pinned in other slots are disabled.
+- A column with more than 6 tasks scrolls in edit mode too (scroll wheel or trackpad), and all its tasks can be dragged. A drag past the visible area keeps moving the target row. The scroll view does not scroll automatically during a drag.
+- In a pinned column, each task tile shows a drag handle (`line.3.horizontal`) in place of the key cap. Drag a task tile up or down to change the task order. The other tiles move aside during the drag. The app saves the order for each project, and the order applies in every slot that shows the project. Tasks that Harvest adds later go after the saved order. A click on a tile without a drag opens the project menu.
+- − removes the last column and clears its pin. + adds a column. N stays in 4–9.
+- After each change, the panel resizes and stays centered.
 
 ---
 
@@ -233,7 +249,8 @@ Handle keys with an `NSEvent.addLocalMonitorForEvents(matching: .keyDown)` monit
 ```
 - In `projectSelected`, digits select **tasks**, not projects. To switch project: Esc, then the other digit.
 - A project with one task still waits for its task digit (consistent two-key rhythm).
-- `⌘⌫` in any open state → `TimerService.stop()`.
+- The stop shortcut in any open state → `TimerService.stop()`. It is `KeyboardShortcuts.Name.stopTimer`, default `⌫`. No handler is attached to it, so it is never a global hotkey. The key monitor compares each key event with it. The panel buttons are not focusable, so Space and Return never press them.
+- The pencil button toggles `editing` from `idle` or `projectSelected`. In `editing`, Esc or the pencil button goes back to `idle`, and digits and clicks do nothing (§4.7).
 - `/` → search (M6, optional; see §9).
 - Mouse: clicking any tile starts it from any state. Clicking a column header = pressing its digit.
 
@@ -274,7 +291,7 @@ Elapsed time for the running entry: `hours` at fetch time + (now − fetch time)
 
 ### 6.4 Token expiry
 - `expiresAt − now < 24 h` → header banner "Harvest connection expires soon — Reconnect" (click runs `connect()`), and the Settings Account tab shows the same.
-- Any `401` → *disconnected* state: panel shows the not-connected screen with a "Reconnect" button; the menu bar item shows a warning symbol.
+- Any `401`, from a refresh or from a timer start or stop, → `AppStore.sessionRejected()` → *disconnected* state: panel shows the not-connected screen with a "Reconnect" button; the menu bar item shows a warning symbol.
 
 ### 6.5 TimerService
 Public API (phase 2 will reuse it):
@@ -292,25 +309,25 @@ func stop() async throws
 Extract steps 1–3 into a pure `TimerDecision` function and unit-test it.
 
 ### 6.6 SlotResolver (pure, heavily tested)
-Inputs: `favorites: [ProjectID]` (ordered), `n: Int`, `recentOrder: [ProjectID]` (most recent first), `previousRecentSlots: [Int: ProjectID]` (slot index → project, persisted), `activeProjects: Set<ProjectID>`.
+Inputs: `pinned: [Int: ProjectID]` (slot index → project, set in edit mode), `n: Int`, `recentOrder: [ProjectID]` (most recent first), `previousRecentSlots: [Int: ProjectID]` (slot index → project, persisted), `activeProjects: Set<ProjectID>`.
 
 Algorithm:
-1. `fav = favorites.filter(activeProjects.contains).prefix(n)`; these take slots `0..<fav.count` in order.
-2. `k = n − fav.count` recent slots remain. `R` = the first `k` projects of `recentOrder` that are active and not in `fav`.
-3. For each previous recent slot index still in range, if its project is in `R`, keep it at the same index.
+1. Each pin with an index in `0..<n` and an active project takes its slot. If one project has two pins, only the lower index counts.
+2. The other slots are recent slots (`k` of them). `R` = the first `k` projects of `recentOrder` that are active and not pinned.
+3. For each previous recent slot index that is still a recent slot, if its project is in `R`, keep it at the same index.
 4. Fill the empty recent slots in ascending index with the remaining members of `R`, in recency order.
 5. If fewer projects than `n` exist, the leftover slots are empty and the panel renders fewer columns.
 6. Return the slots plus the new `previousRecentSlots` to persist.
 
-Effect: a recent project keeps its number until it drops out of the top `k`; a newcomer takes the vacated slot. Numbers never reshuffle because of ordering alone.
+Effect: a pinned project never moves. A recent project keeps its number until it drops out of the top `k`; a newcomer takes the vacated slot. Numbers never reshuffle because of ordering alone.
 
-Required tests: favorites fill first in order; the favorites > n cap; a newcomer replaces the least recent at the same index; stable output when nothing changes; archived favorites skipped; fewer projects than n; n shrinking and growing.
+Required tests: pinned projects keep their slots and recents fill the rest; pins at or above n are ignored; a newcomer replaces the least recent at the same index; stable output when nothing changes; archived pins leave the slot to recents; a pinned project is not repeated as recent; a duplicate pin; fewer projects than n; n shrinking and growing.
 
 ### 6.7 StatusItemController
-- Idle: SF Symbol `timer` only.
+- Idle: the `MenuBarIcon` template image only (the app icon dial with the scythe needle, in one color; macOS tints it).
 - Running: symbol + elapsed `h:mm` (update every 30 s; exact seconds aren't needed in the menu bar).
 - Disconnected or error: `exclamationmark.triangle`.
-- Menu: running entry line (`Project · Task`, disabled), "Stop timer", separator, "Open picker" (shows the current hotkey), "Settings…", separator, "Quit Speedscythe".
+- Menu: running entry line (`Project · Task`, disabled), "Stop timer", separator, "Open picker" (shows the current hotkey), "Edit board…", "Settings…", separator, "Quit Speedscythe".
 
 ### 6.8 HotkeyService
 `KeyboardShortcuts.Name.openPicker`, default `⌃⌥T` (user-changeable; avoids common app shortcuts like ⌥⌘T). `onKeyUp` → toggle the panel.
@@ -319,17 +336,19 @@ Required tests: favorites fill first in order; the favorites > n cap; a newcomer
 
 ## 7. Settings window
 
-A regular `NSWindow` hosting SwiftUI (not the `Settings` scene, which is awkward in agent apps). Opening it calls `NSApp.activate()` (the macOS 14 API) so the window comes to the front. Tabs:
+A regular `NSWindow` hosting SwiftUI (not the `Settings` scene, which is awkward in agent apps). Opening it calls `NSApp.activate()` (the macOS 14 API) so the window comes to the front.
 
-- **Account:** connection status ("Connected as <name> · <account>"), token expiry ("Expires in 9 days"), buttons Connect / Reconnect / Disconnect.
+The layout follows System Settings: a `NavigationSplitView` with a sidebar of panes on the left and the selected pane on the right. Each pane is a `.formStyle(.grouped)` form. The hosting controller sets `sceneBridgingOptions = .all`, so the pane title shows in the unified toolbar. Panes:
+
+- **Account:** "Harvest" section with "Connected as <name> · <account>", "Connection expires" (relative date), a warning when less than 24 h remain (§6.4), and buttons Connect, or Disconnect and Reconnect.
 - **General:**
-  - Hotkey: `KeyboardShortcuts.Recorder`
-  - Projects on board: stepper 1–9 (default 6)
-  - "Continue today's entry instead of creating a new one" (default on)
-  - "Launch at login" via `SMAppService.mainApp` (spike S8)
-- **Favorites:** list of active assigned projects (`Client — Project`) with a favorite checkbox. Favorites appear in a separate section at the top and can be drag-reordered (`.onMove`); that order is their slot order. Footnote: "Favorites fill the first slots. Remaining slots show your most recent projects." If there are more favorites than slots, show "Only the first N favorites fit on the board."
+  - "Shortcuts" section: "Open picker" and "Stop timer in the panel" (`KeyboardShortcuts.Recorder` for `.openPicker` and `.stopTimer`), and a "Reset shortcuts" button. The button resets both shortcuts to their defaults. The Recorder accepts only shortcuts with a modifier, and ⌫ in the Recorder clears the shortcut. The button is the only way back to the plain `⌫` default.
+  - "Timers" section: toggle "Continue the matching entry from today" (default on), with the subtitle "Off: every start creates a new entry."
+  - "Startup" section: "Launch at login" via `SMAppService.mainApp` (spike S8). If the status is `.requiresApproval`, a note tells the user to allow Speedscythe in System Settings → General → Login Items. A `register()` or `unregister()` error shows below the toggle.
 
-Preferences live in `UserDefaults` (`slotCount`, `continueToday`, `favoriteProjectIDs`, `recentSlotAssignments`). KeyboardShortcuts stores its own.
+The user sets the slot count and the pinned projects in the panel edit mode (§4.7), not in Settings.
+
+Preferences live in `UserDefaults` (`slotCount` default 6, `continueToday`, `pinnedSlots`, `taskOrders`, `recentSlotAssignments`). KeyboardShortcuts stores its own.
 
 ---
 
@@ -340,8 +359,8 @@ Preferences live in `UserDefaults` (`slotCount`, `continueToday`, `favoriteProje
 | S1 | Does Harvest accept `speedscythe://oauth-callback` as a Redirect URL? | Before M1 (human) | Try registering it. If rejected, use the loopback fallback (§6.1). **Result: rejected.** The app uses the loopback redirect `http://127.0.0.1:47823/callback` |
 | S2 | Are callback params in the fragment or the query? | M1 | Log the raw callback URL once (redact the token). **Result: query string**, e.g. `/callback?access_token=…&expires_in=…&scope=harvest%3A<ID>&state=…&token_type=bearer`, although the docs say fragment. The parser reads both |
 | S3 | Actual token lifetime (`expires_in`) | M1 | Log it. **Result: 1209599 s (14 days)** |
-| S4 | Does starting or restarting a timer auto-stop the currently running one? | M4 | Start A, then start B, then list running entries |
-| S5 | Restart behavior in this account's mode: same ID or new entry? | M4 | Restart a stopped entry, compare IDs, check the web UI |
+| S4 | Does starting or restarting a timer auto-stop the currently running one? | M4 | Start A, then start B, then list running entries. **Result: yes.** After each start only the new entry was running, so TimerService does not stop the running entry first |
+| S5 | Restart behavior in this account's mode: same ID or new entry? | M4 | Restart a stopped entry, compare IDs, check the web UI. **Result: same ID** in this duration-mode account (`wants_timestamp_timers: false`). Timestamp mode is not tested; TimerService uses the returned entry in both modes |
 | S6 | Is the `task_assignments` order stable across fetches? | M2 | Fetch twice, compare. If unstable, sort tasks by name (case-insensitive). **Result: stable** (0 of 28 assignments changed task order between two fetches). Use the API order |
 | S7 | Does reconnect skip Harvest's login/consent when the browser session is alive? | M6 | Disconnect, then Connect |
 | S8 | Does `SMAppService.mainApp` work with ad-hoc signed builds? | M6 | If not, drop the toggle and document manual Login Items setup in the README |
@@ -368,13 +387,13 @@ Each milestone ends with tests passing, the app running, and the acceptance chec
   PickerPanel, PanelController, HotkeyService, BoardView rendering from the cache using a simple provisional slot rule (first N projects by recency), light/dark, correct screen, Esc/click-outside/toggle to close.
   *Accept:* hotkey shows the board over any app, including a full-screen one, in under a blink; it matches the sketches in both themes; focus returns to the previous app on close.
 
-- [ ] **M4 — Start, continue, stop**
+- [x] **M4 — Start, continue, stop**
   BoardState machine with tests, TimerService + TimerDecision with tests, header running indicator, tile states, StatusItemController with live elapsed time and Stop.
   *Accept:* hotkey → 1 → 2 starts Project 1 / Task 2 in Harvest (check the web UI) and closes the panel; repeating it on a stopped entry today continues that entry; ⌘⌫ stops. Record S4/S5.
 
-- [ ] **M5 — Favorites and slots**
-  SlotResolver with the full test list from §6.6; General + Favorites tabs; N slots.
-  *Accept:* favorites always occupy the first columns in the chosen order; recent columns only change number when a new project enters.
+- [x] **M5 — Pinned slots and edit mode**
+  SlotResolver with the full test list from §6.6; panel edit mode (§4.7); N slots.
+  *Accept:* a pinned project always occupies its slot; − and + change the column count; recent columns only change number when a new project enters.
 
 - [ ] **M6 — Polish**
   Column overflow scrolling + tasks past 9 (§4.2), all empty/error states (§4.6), expiry banner + 401 handling (§6.4), launch at login, hover states. Optional: `/` search (a field that fuzzy-filters tiles by "project task" text; Enter starts the top match; Esc clears then closes).
@@ -420,5 +439,6 @@ Short record of why things are the way they are, so they don't get re-litigated.
 - Two-step digits (project, then task) over a single-key keyboard map: easier to learn and scales to 9×9.
 - Implicit grant over the authorization code flow: the code flow needs a client secret for both the exchange and refresh, which can't be kept secret in an open-source app. Revisit (secret injected by CI) if reconnecting gets annoying.
 - Swift over Tauri: the hard parts are OS integration (panel, hotkey, focus, later Accessibility); the UI is one screen.
-- Favorites plus in-place recent slots: favorites never move; recent numbers change only when the set of projects changes.
-- All tasks shown, no per-project task config: tasks past 9 are click-only; columns scroll past 6 tiles.
+- Pinned slots plus in-place recent slots: a pinned project never moves; recent numbers change only when the set of projects changes.
+- Edit mode in the panel over a Favorites tab in Settings: the user edits the board on the same grid that they use, so a pin goes to the exact slot number.
+- All tasks shown, no per-project task filter: tasks past 9 are click-only; columns scroll past 6 tiles. The only per-project task setting is the order, which the user changes by drag in edit mode.

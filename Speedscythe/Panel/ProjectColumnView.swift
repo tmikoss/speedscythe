@@ -35,19 +35,32 @@ struct ProjectColumnView: View {
             .contentShape(Rectangle())
             .onTapGesture(perform: onHeaderClick)
 
-            ForEach(0..<rowCount, id: \.self) { row in
-                if row < column.tasks.count {
-                    TaskTileView(
-                        number: row < 9 ? row + 1 : nil,
-                        task: column.tasks[row],
-                        status: status(forRow: row),
-                        invertsKeyCap: emphasis == .selected,
-                        onClick: { onTileClick(row) }
-                    )
-                } else {
-                    RoundedRectangle(cornerRadius: TaskTileView.cornerRadius)
-                        .strokeBorder(Color(nsColor: .separatorColor), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                        .frame(height: TaskTileView.height)
+            if column.tasks.count > rowCount {
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) {
+                        VStack(spacing: 10) {
+                            ForEach(column.tasks.indices, id: \.self) { row in
+                                tile(forRow: row)
+                                    .id(row)
+                            }
+                        }
+                    }
+                    .frame(height: CGFloat(rowCount) * TaskTileView.height + CGFloat(rowCount - 1) * 10)
+                    .onChange(of: startingTask) { _, task in
+                        if let task {
+                            withAnimation { proxy.scrollTo(task) }
+                        }
+                    }
+                }
+            } else {
+                ForEach(0..<rowCount, id: \.self) { row in
+                    if row < column.tasks.count {
+                        tile(forRow: row)
+                    } else {
+                        RoundedRectangle(cornerRadius: TaskTileView.cornerRadius)
+                            .strokeBorder(Color(nsColor: .separatorColor), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                            .frame(height: TaskTileView.height)
+                    }
                 }
             }
         }
@@ -61,6 +74,17 @@ struct ProjectColumnView: View {
             }
         }
         .opacity(emphasis == .dimmed ? 0.38 : 1)
+    }
+
+    private func tile(forRow row: Int) -> some View {
+        TaskTileView(
+            number: row < 9 ? row + 1 : nil,
+            task: column.tasks[row],
+            status: status(forRow: row),
+            invertsKeyCap: emphasis == .selected,
+            showsDragHandle: false,
+            onClick: { onTileClick(row) }
+        )
     }
 
     private func status(forRow row: Int) -> TaskTileView.Status {

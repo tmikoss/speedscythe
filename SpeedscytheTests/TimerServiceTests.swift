@@ -87,6 +87,41 @@ final class TimerServiceTests: XCTestCase {
 
         XCTAssertEqual(api.calls, [])
     }
+
+    func testRejectedTokenOnStartRejectsSession() async {
+        api.error = HarvestError.unauthorized
+
+        do {
+            try await service.start(projectID: 10, taskID: 20, source: .picker)
+            XCTFail("Expected an error")
+        } catch {
+            XCTAssertEqual(context.rejectedSessionCount, 1)
+        }
+        XCTAssertEqual(context.appliedEntries.count, 0)
+    }
+
+    func testRejectedTokenOnStopRejectsSession() async {
+        context.runningEntry = TestData.entry(id: 3, projectID: 10, taskID: 20, isRunning: true)
+        api.error = HarvestError.unauthorized
+
+        do {
+            try await service.stop()
+            XCTFail("Expected an error")
+        } catch {
+            XCTAssertEqual(context.rejectedSessionCount, 1)
+        }
+    }
+
+    func testOtherErrorsKeepSession() async {
+        api.error = HarvestError.api(status: 422, message: "Invalid")
+
+        do {
+            try await service.start(projectID: 10, taskID: 20, source: .picker)
+            XCTFail("Expected an error")
+        } catch {
+            XCTAssertEqual(context.rejectedSessionCount, 0)
+        }
+    }
 }
 
 @MainActor
@@ -96,6 +131,7 @@ private final class FakeTimerContext: TimerContext {
     var todayEntries: [TimeEntry] = []
     var appliedEntries: [TimeEntry] = []
     var refreshCount = 0
+    var rejectedSessionCount = 0
 
     func apply(updatedEntry: TimeEntry) {
         appliedEntries.append(updatedEntry)
@@ -103,6 +139,10 @@ private final class FakeTimerContext: TimerContext {
 
     func refreshInBackground() {
         refreshCount += 1
+    }
+
+    func sessionRejected() {
+        rejectedSessionCount += 1
     }
 }
 
@@ -116,23 +156,31 @@ private final class FakeTimeEntryAPI: TimeEntryAPI {
 
     var calls: [Call] = []
     var response = TestData.entry(id: 0, projectID: 0, taskID: 0)
+    var error: Error?
     var holdsStop = false
     var stopGate: CheckedContinuation<Void, Never>?
 
     func createTimeEntry(projectID: Int, taskID: Int, spentDate: String) async throws -> TimeEntry {
         calls.append(.create(projectID: projectID, taskID: taskID, spentDate: spentDate))
-        return response
+        return try result()
     }
 
     func restartTimeEntry(id: Int) async throws -> TimeEntry {
         calls.append(.restart(id: id))
-        return response
+        return try result()
     }
 
     func stopTimeEntry(id: Int) async throws -> TimeEntry {
         calls.append(.stop(id: id))
         if holdsStop {
             await withCheckedContinuation { stopGate = $0 }
+        }
+        return try result()
+    }
+
+    private func result() throws -> TimeEntry {
+        if let error {
+            throw error
         }
         return response
     }

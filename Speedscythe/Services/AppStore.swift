@@ -15,6 +15,7 @@ final class AppStore {
     private(set) var lastRefresh: Date?
     private(set) var errorMessage: String?
     private(set) var today = Date.now.spentDate
+    private(set) var isRefreshing = false
 
     var todayEntries: [TimeEntry] {
         recentEntries.filter { $0.spentDate == today }
@@ -28,7 +29,6 @@ final class AppStore {
     }
 
     @ObservationIgnored private let cache = CacheStore(fileURL: CacheStore.defaultFileURL)
-    @ObservationIgnored private var isRefreshing = false
     @ObservationIgnored private var needsAnotherRefresh = false
     @ObservationIgnored private var refreshTimer: Timer?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -121,7 +121,6 @@ final class AppStore {
                 lastRefresh: .now
             )
             guard auth.session == session else { return }
-            logger.info("S4 running entries after refresh: \(runningEntries.map(\.id), privacy: .public)")
 
             apply(snapshot)
             today = Date.now.spentDate
@@ -129,8 +128,7 @@ final class AppStore {
             logger.info("Harvest account uses timestamp timers: \(snapshot.company?.wantsTimestampTimers ?? false, privacy: .public)")
             try cache.save(snapshot)
         } catch HarvestError.unauthorized {
-            auth.disconnect()
-            errorMessage = HarvestError.unauthorized.localizedDescription
+            sessionRejected()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -195,5 +193,10 @@ extension AppStore: TimerContext {
         } else if runningEntry?.id == updatedEntry.id {
             runningEntry = nil
         }
+    }
+
+    func sessionRejected() {
+        auth.disconnect()
+        errorMessage = HarvestError.unauthorized.localizedDescription
     }
 }

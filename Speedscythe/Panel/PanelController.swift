@@ -1,4 +1,5 @@
 import AppKit
+import KeyboardShortcuts
 import Observation
 import SwiftUI
 
@@ -9,9 +10,30 @@ final class PanelState {
     var errorMessage: String?
 }
 
+extension BoardModel {
+    @MainActor
+    init(store: AppStore, preferences: Preferences) {
+        self.init(
+            assignments: store.assignments,
+            slots: Self.slotResolution(store: store, preferences: preferences).slots,
+            taskOrders: preferences.taskOrders
+        )
+    }
+
+    @MainActor
+    static func slotResolution(store: AppStore, preferences: Preferences) -> SlotResolution {
+        SlotResolver.resolve(
+            pinned: preferences.pinnedSlots,
+            slotCount: preferences.slotCount,
+            recentOrder: store.recentProjectOrder,
+            previousRecentSlots: preferences.recentSlotAssignments,
+            activeProjects: Set(store.assignments.filter(\.isActive).map(\.project.id))
+        )
+    }
+}
+
 @MainActor
 final class PanelController: NSObject, NSWindowDelegate {
-    private static let slotCount = 6
     private static let naturalColumnWidth: CGFloat = 164
     private static let minColumnWidth: CGFloat = 120
     private static let screenMargin: CGFloat = 80
@@ -21,20 +43,35 @@ final class PanelController: NSObject, NSWindowDelegate {
     ]
 
     private let store: AppStore
+    private let preferences: Preferences
     private let timerService: TimerService
     private let state = PanelState()
     private let panel = PickerPanel()
+    private let openSettings: () -> Void
     private let hostingView: NSHostingView<BoardView>
     private var keyMonitor: Any?
+    private var observesLayout = false
 
     private var board: BoardModel {
-        BoardModel(assignments: store.assignments, projectOrder: store.recentProjectOrder, slotCount: Self.slotCount)
+        BoardModel(store: store, preferences: preferences)
     }
 
-    init(store: AppStore, timerService: TimerService) {
+    init(store: AppStore, preferences: Preferences, timerService: TimerService, openSettings: @escaping () -> Void) {
         self.store = store
+        self.preferences = preferences
         self.timerService = timerService
-        hostingView = NSHostingView(rootView: BoardView(store: store, state: state, slotCount: Self.slotCount, columnWidth: Self.naturalColumnWidth, onEvent: { _ in }))
+        self.openSettings = openSettings
+        hostingView = NSHostingView(
+            rootView: BoardView(
+                store: store,
+                preferences: preferences,
+                state: state,
+                columnWidth: Self.naturalColumnWidth,
+                onEvent: { _ in },
+                onEdit: { _ in },
+                onOpenSettings: {}
+            )
+        )
         super.init()
         panel.contentView = hostingView
         panel.delegate = self
@@ -48,28 +85,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    func show() {
+    func show(editing: Bool = false) {
         let mouseLocation = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) ?? NSScreen.main else { return }
-        let visibleFrame = screen.visibleFrame
 
-        state.boardState = .idle
+        state.boardState = editing ? .editing : .idle
         state.errorMessage = nil
-        hostingView.rootView = BoardView(
-            store: store,
-            state: state,
-            slotCount: Self.slotCount,
-            columnWidth: columnWidth(columnCount: board.columns.count, availableWidth: visibleFrame.width - Self.screenMargin),
-            onEvent: { [weak self] event in self?.handle(event) }
-        )
-
-        let size = hostingView.fittingSize
-        panel.setFrame(
-            NSRect(x: visibleFrame.midX - size.width / 2, y: visibleFrame.midY - size.height / 2, width: size.width, height: size.height),
-            display: true
-        )
+        layout(on: screen)
         panel.makeKeyAndOrderFront(nil)
-        panel.invalidateShadow()
         installKeyMonitor()
 
         if store.lastRefresh.map({ Date.now.timeIntervalSince($0) > 30 }) ?? true {
@@ -86,9 +109,120 @@ final class PanelController: NSObject, NSWindowDelegate {
         hide()
     }
 
+    private func layout(on screen: NSScreen) {
+        let visibleFrame = screen.visibleFrame
+        if !store.assignments.isEmpty {
+            preferences.recentSlotAssignments = BoardModel.slotResolution(store: store, preferences: preferences).recentSlots
+        }
+        let columnCount = BoardView.columnCount(board: board, state: state.boardState, preferences: preferences)
+        hostingView.rootView = BoardView(
+            store: store,
+            preferences: preferences,
+            state: state,
+            columnWidth: columnWidth(columnCount: columnCount, availableWidth: visibleFrame.width - Self.screenMargin),
+            onEvent: { [weak self] event in self?.handle(event) },
+            onEdit: { [weak self] edit in self?.handle(edit) },
+            onOpenSettings: { [weak self] in
+                self?.hide()
+                self?.openSettings()
+            }
+        )
+
+        let size = hostingView.fittingSize
+        panel.setFrame(
+            NSRect(x: visibleFrame.midX - size.width / 2, y: visibleFrame.midY - size.height / 2, width: size.width, height: size.height),
+            display: true
+        )
+        panel.invalidateShadow()
+        observeLayout()
+    }
+
+    private func observeLayout() {
+        guard !observesLayout else { return }
+        observesLayout = true
+        withObservationTracking {
+            _ = board
+            _ = BoardView.content(store: store)
+            _ = state.errorMessage
+            _ = store.errorMessage
+            _ = store.auth.isConnecting
+            _ = store.auth.errorMessage
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.observesLayout = false
+                if self.panel.isVisible {
+                    self.relayout()
+                }
+            }
+        }
+    }
+
+    private func relayout() {
+        guard let screen = panel.screen ?? NSScreen.main else { return }
+        layout(on: screen)
+    }
+
+    private func handle(_ edit: BoardEdit) {
+        switch edit {
+        case .pick(let slot):
+            showProjectMenu(slot: slot)
+            return
+        case .clear(let slot):
+            preferences.pinnedSlots[slot] = nil
+        case .moveTask(let slot, let from, let to):
+            guard let column = board.columns.first(where: { $0.slot == slot }) else { return }
+            var taskIDs = column.tasks.map(\.id)
+            taskIDs.insert(taskIDs.remove(at: from), at: to)
+            preferences.taskOrders[column.project.id] = taskIDs
+        case .addSlot:
+            preferences.slotCount = min(preferences.slotCount + 1, Preferences.slotRange.upperBound)
+        case .removeSlot:
+            guard preferences.slotCount > Preferences.slotRange.lowerBound else { return }
+            preferences.slotCount -= 1
+            preferences.pinnedSlots[preferences.slotCount] = nil
+        }
+        relayout()
+    }
+
+    private func showProjectMenu(slot: Int) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let assignments = store.assignments
+            .filter(\.isActive)
+            .sorted { "\($0.client.name) — \($0.project.name)".localizedCaseInsensitiveCompare("\($1.client.name) — \($1.project.name)") == .orderedAscending }
+        let pinnedElsewhere = Set(preferences.pinnedSlots.filter { $0.key != slot }.values)
+        var clientID: Int?
+        for assignment in assignments {
+            if assignment.client.id != clientID {
+                clientID = assignment.client.id
+                menu.addItem(.sectionHeader(title: assignment.client.name))
+            }
+            let item = NSMenuItem(title: assignment.project.name, action: #selector(projectPicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = slot
+            item.representedObject = assignment.project.id
+            item.state = preferences.pinnedSlots[slot] == assignment.project.id ? .on : .off
+            item.isEnabled = !pinnedElsewhere.contains(assignment.project.id)
+            menu.addItem(item)
+        }
+        let windowLocation = panel.mouseLocationOutsideOfEventStream
+        menu.popUp(positioning: nil, at: hostingView.convert(windowLocation, from: nil), in: hostingView)
+    }
+
+    @objc private func projectPicked(_ item: NSMenuItem) {
+        guard let projectID = item.representedObject as? Int else { return }
+        preferences.pinnedSlots[item.tag] = projectID
+        relayout()
+    }
+
     private func handle(_ event: BoardEvent) {
         let (boardState, effect) = BoardState.reduce(state.boardState, event, board: board)
+        let editingChanged = boardState.isEditing != state.boardState.isEditing
         state.boardState = boardState
+        if editingChanged {
+            relayout()
+        }
         switch effect {
         case .close:
             hide()
@@ -122,7 +256,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         if event.keyCode == 53 {
             return .escape
         }
-        if event.keyCode == 51, modifiers == .command {
+        if let shortcut = KeyboardShortcuts.Shortcut(event: event), shortcut == KeyboardShortcuts.getShortcut(for: .stopTimer) {
             return .stopShortcut
         }
         if modifiers.isEmpty, let digit = Self.digitKeyCodes[event.keyCode] {

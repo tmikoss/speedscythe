@@ -37,6 +37,6 @@ enum TestData {
                 }
             )
         }
-        return BoardModel(assignments: assignments, projectOrder: assignments.map(\.project.id), slotCount: 9)
+        return BoardModel(assignments: assignments, slots: assignments.map(\.project.id))
     }
 }

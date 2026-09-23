@@ -1,5 +1,4 @@
 import Foundation
-import os
 
 protocol TimeEntryAPI {
     func createTimeEntry(projectID: Int, taskID: Int, spentDate: String) async throws -> TimeEntry
@@ -16,6 +15,7 @@ protocol TimerContext: AnyObject {
     var todayEntries: [TimeEntry] { get }
     func apply(updatedEntry: TimeEntry)
     func refreshInBackground()
+    func sessionRejected()
 }
 
 enum StartSource {
@@ -36,12 +36,11 @@ final class TimerService {
     private let makeAPI: (AuthSession) -> TimeEntryAPI
     private let continueToday: () -> Bool
     private var isStopping = false
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier!, category: "timer")
 
     init(
         context: TimerContext,
         makeAPI: @escaping (AuthSession) -> TimeEntryAPI = { HarvestClient(accessToken: $0.accessToken, accountID: $0.accountID) },
-        continueToday: @escaping () -> Bool = { Preferences.continueToday }
+        continueToday: @escaping () -> Bool
     ) {
         self.context = context
         self.makeAPI = makeAPI
@@ -63,10 +62,9 @@ final class TimerService {
         case .keepRunning:
             return
         case .restart(let entryID):
-            entry = try await api.restartTimeEntry(id: entryID)
-            logger.info("S5 restart: requested entry \(entryID, privacy: .public), Harvest returned entry \(entry.id, privacy: .public)")
+            entry = try await rejectingSession { try await api.restartTimeEntry(id: entryID) }
         case .create:
-            entry = try await api.createTimeEntry(projectID: projectID, taskID: taskID, spentDate: Date.now.spentDate)
+            entry = try await rejectingSession { try await api.createTimeEntry(projectID: projectID, taskID: taskID, spentDate: Date.now.spentDate) }
         }
         context.apply(updatedEntry: entry)
         context.refreshInBackground()
@@ -76,8 +74,17 @@ final class TimerService {
         guard !isStopping, let session = context.session, let runningEntry = context.runningEntry else { return }
         isStopping = true
         defer { isStopping = false }
-        let entry = try await makeAPI(session).stopTimeEntry(id: runningEntry.id)
+        let entry = try await rejectingSession { try await makeAPI(session).stopTimeEntry(id: runningEntry.id) }
         context.apply(updatedEntry: entry)
         context.refreshInBackground()
+    }
+
+    private func rejectingSession(_ request: () async throws -> TimeEntry) async throws -> TimeEntry {
+        do {
+            return try await request()
+        } catch HarvestError.unauthorized {
+            context.sessionRejected()
+            throw HarvestError.unauthorized
+        }
     }
 }

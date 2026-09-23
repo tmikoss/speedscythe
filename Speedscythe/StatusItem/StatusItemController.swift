@@ -8,15 +8,23 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let store: AppStore
     private let timerService: TimerService
     private let openPicker: () -> Void
+    private let openEditor: () -> Void
     private let openSettings: () -> Void
     private let runningItem = NSMenuItem(title: "No timer running", action: nil, keyEquivalent: "")
     private let stopItem = NSMenuItem(title: "Stop timer", action: nil, keyEquivalent: "")
     private var refreshTimer: Timer?
 
-    init(store: AppStore, timerService: TimerService, openPicker: @escaping () -> Void, openSettings: @escaping () -> Void) {
+    init(
+        store: AppStore,
+        timerService: TimerService,
+        openPicker: @escaping () -> Void,
+        openEditor: @escaping () -> Void,
+        openSettings: @escaping () -> Void
+    ) {
         self.store = store
         self.timerService = timerService
         self.openPicker = openPicker
+        self.openEditor = openEditor
         self.openSettings = openSettings
         super.init()
 
@@ -35,6 +43,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         pickerItem.target = self
         pickerItem.setShortcut(for: .openPicker)
         menu.addItem(pickerItem)
+        let editorItem = NSMenuItem(title: "Edit board…", action: #selector(editorSelected), keyEquivalent: "")
+        editorItem.target = self
+        menu.addItem(editorItem)
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(settingsSelected), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -75,7 +86,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "Speedscythe needs attention")
             button.title = ""
         } else {
-            button.image = NSImage(systemSymbolName: "timer", accessibilityDescription: "Speedscythe")
+            let image = NSImage(named: "MenuBarIcon")
+            image?.accessibilityDescription = "Speedscythe"
+            button.image = image
             button.title = store.runningElapsed(at: .now).map { " \(ElapsedFormat.hoursMinutes($0))" } ?? ""
         }
     }
@@ -92,6 +105,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func pickerSelected() {
         openPicker()
+    }
+
+    @objc private func editorSelected() {
+        openEditor()
     }
 
     @objc private func settingsSelected() {

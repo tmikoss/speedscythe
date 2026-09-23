@@ -44,7 +44,7 @@ final class BoardStateTests: XCTestCase {
 
     func testStartingIgnoresInput() {
         let starting = BoardState.starting(column: 0, task: 0)
-        for event in [BoardEvent.digit(1), .escape, .stopShortcut, .columnClicked(1), .tileClicked(column: 1, task: 0)] {
+        for event in [BoardEvent.digit(1), .escape, .stopShortcut, .columnClicked(1), .tileClicked(column: 1, task: 0), .editToggled] {
             XCTAssertTrue(BoardState.reduce(starting, event, board: board) == (starting, nil), "\(event)")
         }
     }
@@ -65,6 +65,39 @@ final class BoardStateTests: XCTestCase {
     func testColumnClickSelectsThatProject() {
         XCTAssertTrue(BoardState.reduce(.idle, .columnClicked(2), board: board) == (.projectSelected(column: 2), nil))
         XCTAssertTrue(BoardState.reduce(.projectSelected(column: 0), .columnClicked(1), board: board) == (.projectSelected(column: 1), nil))
+    }
+
+    func testProjectDigitFollowsSlotNumberAcrossEmptySlots() {
+        let gappedBoard = BoardModel(
+            assignments: [
+                ProjectAssignment(id: 1, isActive: true, project: Project(id: 100, name: "A", code: nil), client: Client(id: 1, name: "C"), taskAssignments: []),
+                ProjectAssignment(id: 2, isActive: true, project: Project(id: 200, name: "B", code: nil), client: Client(id: 1, name: "C"), taskAssignments: []),
+            ],
+            slots: [100, nil, 200]
+        )
+
+        XCTAssertTrue(BoardState.reduce(.idle, .digit(3), board: gappedBoard) == (.projectSelected(column: 1), nil))
+        XCTAssertTrue(BoardState.reduce(.idle, .digit(2), board: gappedBoard) == (.idle, nil))
+    }
+
+    func testEditToggleEntersEditModeFromOpenStates() {
+        XCTAssertTrue(BoardState.reduce(.idle, .editToggled, board: board) == (.editing, nil))
+        XCTAssertTrue(BoardState.reduce(.projectSelected(column: 1), .editToggled, board: board) == (.editing, nil))
+    }
+
+    func testEditToggleAndEscapeLeaveEditMode() {
+        XCTAssertTrue(BoardState.reduce(.editing, .editToggled, board: board) == (.idle, nil))
+        XCTAssertTrue(BoardState.reduce(.editing, .escape, board: board) == (.idle, nil))
+    }
+
+    func testEditModeIgnoresStartInput() {
+        for event in [BoardEvent.digit(1), .columnClicked(0), .tileClicked(column: 0, task: 0)] {
+            XCTAssertTrue(BoardState.reduce(.editing, event, board: board) == (.editing, nil), "\(event)")
+        }
+    }
+
+    func testStopShortcutStopsInEditMode() {
+        XCTAssertTrue(BoardState.reduce(.editing, .stopShortcut, board: board) == (.editing, .stop))
     }
 
     func testSelectedColumnThatDisappearedIgnoresDigits() {

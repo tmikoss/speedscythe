@@ -2,21 +2,32 @@ import XCTest
 @testable import Speedscythe
 
 final class BoardModelTests: XCTestCase {
-    func testOrdersColumnsByProjectOrderAndCapsAtSlotCount() {
+    func testBuildsColumnsInSlotOrder() {
         let board = BoardModel(
             assignments: [assignment(projectID: 1), assignment(projectID: 2), assignment(projectID: 3)],
-            projectOrder: [3, 1, 2],
-            slotCount: 2
+            slots: [3, 1]
         )
 
         XCTAssertEqual(board.columns.map(\.project.id), [3, 1])
+        XCTAssertEqual(board.columns.map(\.number), [1, 2])
+    }
+
+    func testKeepsSlotNumbersAcrossEmptySlots() {
+        let board = BoardModel(
+            assignments: [assignment(projectID: 1), assignment(projectID: 2)],
+            slots: [1, nil, 2]
+        )
+
+        XCTAssertEqual(board.columns.map(\.number), [1, 3])
+        XCTAssertEqual(board.columnIndex(forNumber: 3), 1)
+        XCTAssertNil(board.columnIndex(forNumber: 2))
+        XCTAssertEqual(board.maxProjectNumber, 3)
     }
 
     func testSkipsProjectsWithoutActiveAssignment() {
         let board = BoardModel(
             assignments: [assignment(projectID: 1), assignment(projectID: 2, isActive: false)],
-            projectOrder: [2, 1, 9],
-            slotCount: 6
+            slots: [2, 1, 9]
         )
 
         XCTAssertEqual(board.columns.map(\.project.id), [1])
@@ -31,11 +42,24 @@ final class BoardModelTests: XCTestCase {
                     TaskAssignment(id: 3, isActive: true, task: HarvestTask(id: 10, name: "Alpha")),
                 ]),
             ],
-            projectOrder: [1],
-            slotCount: 6
+            slots: [1]
         )
 
         XCTAssertEqual(board.columns.first?.tasks.map(\.id), [30, 10])
+    }
+
+    func testSavedTaskOrderComesFirstAndNewTasksFollowInAPIOrder() {
+        let board = BoardModel(
+            assignments: [
+                assignment(projectID: 1, tasks: [10, 20, 30, 40].map { TaskAssignment(id: $0, isActive: true, task: HarvestTask(id: $0, name: "Task \($0)")) }),
+                assignment(projectID: 2),
+            ],
+            slots: [1, 2],
+            taskOrders: [1: [30, 99, 10]]
+        )
+
+        XCTAssertEqual(board.columns[0].tasks.map(\.id), [30, 10, 20, 40])
+        XCTAssertEqual(board.columns[1].tasks.map(\.id), [1])
     }
 
     func testShowsClientNameOnlyForDuplicateProjectNames() {
@@ -45,8 +69,7 @@ final class BoardModelTests: XCTestCase {
                 assignment(projectID: 2, name: "Website"),
                 assignment(projectID: 3, name: "Support"),
             ],
-            projectOrder: [1, 2, 3],
-            slotCount: 6
+            slots: [1, 2, 3]
         )
 
         XCTAssertEqual(board.columns.map(\.showsClientName), [true, true, false])
@@ -54,7 +77,7 @@ final class BoardModelTests: XCTestCase {
 
     func testCapsVisibleRowsAtSixAndTaskKeysAtNine() {
         let tasks = (1...12).map { TaskAssignment(id: $0, isActive: true, task: HarvestTask(id: $0, name: "Task \($0)")) }
-        let board = BoardModel(assignments: [assignment(projectID: 1, tasks: tasks)], projectOrder: [1], slotCount: 6)
+        let board = BoardModel(assignments: [assignment(projectID: 1, tasks: tasks)], slots: [1])
 
         XCTAssertEqual(board.visibleRowCount, 6)
         XCTAssertEqual(board.maxTaskKeyCount, 9)

@@ -26,6 +26,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: lv.mikoss.speedscythe
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Speedscythe/Resources/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Manual
         CODE_SIGN_IDENTITY: "-"
         HARVEST_CLIENT_ID: WxGxHAz8ykBWZi6ipb6e-MDX

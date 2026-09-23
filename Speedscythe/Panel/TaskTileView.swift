@@ -19,7 +19,10 @@ struct TaskTileView: View {
     let task: HarvestTask
     let status: Status
     let invertsKeyCap: Bool
+    let showsDragHandle: Bool
     let onClick: () -> Void
+
+    @State private var isHovered = false
 
     var body: some View {
         Button(action: onClick) {
@@ -27,6 +30,11 @@ struct TaskTileView: View {
                 HStack(spacing: 8) {
                     if let number {
                         KeyCapView(label: "\(number)", style: invertsKeyCap ? .inverted : .tile)
+                    }
+                    if showsDragHandle {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.tertiary)
                     }
                     Spacer(minLength: 0)
                     statusView
@@ -41,11 +49,20 @@ struct TaskTileView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: Self.cornerRadius).fill(status.isRunning ? Color("RunningFill") : Color(nsColor: .quinarySystemFill)))
+            .background(RoundedRectangle(cornerRadius: Self.cornerRadius).fill(fill))
             .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius).strokeBorder(status.isRunning ? Color("RunningAccent") : Color(nsColor: .separatorColor)))
             .contentShape(RoundedRectangle(cornerRadius: Self.cornerRadius))
         }
         .buttonStyle(.plain)
+        .focusable(false)
+        .onHover { isHovered = $0 }
+    }
+
+    private var fill: Color {
+        if status.isRunning {
+            return Color("RunningFill")
+        }
+        return Color(nsColor: isHovered ? .quaternarySystemFill : .quinarySystemFill)
     }
 
     @ViewBuilder

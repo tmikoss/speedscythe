@@ -1,34 +1,168 @@
 import AppKit
 import SwiftUI
 
+enum BoardEdit {
+    case pick(slot: Int)
+    case clear(slot: Int)
+    case moveTask(slot: Int, from: Int, to: Int)
+    case addSlot
+    case removeSlot
+}
+
 struct BoardView: View {
+    enum Content: Equatable {
+        case notConnected
+        case loading
+        case loadFailed(String)
+        case noProjects
+        case board
+    }
+
     static let padding: CGFloat = 28
     static let columnGap: CGFloat = 8
     static let cornerRadius: CGFloat = 20
 
     let store: AppStore
+    let preferences: Preferences
     let state: PanelState
-    let slotCount: Int
     let columnWidth: CGFloat
     let onEvent: (BoardEvent) -> Void
+    let onEdit: (BoardEdit) -> Void
+    let onOpenSettings: () -> Void
 
     var body: some View {
-        let board = BoardModel(assignments: store.assignments, projectOrder: store.recentProjectOrder, slotCount: slotCount)
+        let board = BoardModel(store: store, preferences: preferences)
+        let content = Self.content(store: store)
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 12) {
-                PanelHeaderView(store: store, hint: hint(for: board), onStop: { onEvent(.stopShortcut) })
-                if let errorMessage = state.errorMessage {
+                PanelHeaderView(
+                    store: store,
+                    isEditing: state.boardState.isEditing,
+                    canEdit: content == .board,
+                    slotCount: preferences.slotCount,
+                    onStop: { onEvent(.stopShortcut) },
+                    onEditToggle: { onEvent(.editToggled) },
+                    onEdit: onEdit
+                )
+                if let session = store.session, session.expiresSoon(at: .now) {
+                    HStack(spacing: 12) {
+                        Text("Harvest connection expires soon")
+                            .font(.system(size: 13))
+                        Button("Reconnect") { store.auth.connect() }
+                            .focusable(false)
+                    }
+                }
+                if let errorMessage = state.errorMessage ?? (content == .board ? store.errorMessage : nil) {
                     Text(errorMessage)
                         .font(.system(size: 13))
                         .foregroundStyle(.red)
                         .lineLimit(2)
                 }
             }
-            HStack(alignment: .top, spacing: Self.columnGap) {
+            if content == .board {
+                columns(board: board)
+                Text(hint(for: board))
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            } else {
+                message(for: content)
+            }
+        }
+        .padding(Self.padding)
+        .frame(width: width(columnCount: Self.columnCount(board: board, state: state.boardState, preferences: preferences)))
+        .fixedSize(horizontal: false, vertical: true)
+        .background {
+            ZStack {
+                VisualEffectBackground(cornerRadius: Self.cornerRadius)
+                RoundedRectangle(cornerRadius: Self.cornerRadius)
+                    .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius).strokeBorder(Color(nsColor: .separatorColor)))
+    }
+
+    @MainActor
+    static func content(store: AppStore) -> Content {
+        if store.session == nil {
+            return .notConnected
+        }
+        if !store.assignments.contains(where: \.isActive) {
+            if store.lastRefresh != nil {
+                return .noProjects
+            }
+            if let errorMessage = store.errorMessage, !store.isRefreshing {
+                return .loadFailed(errorMessage)
+            }
+            return .loading
+        }
+        return .board
+    }
+
+    @ViewBuilder
+    private func message(for content: Content) -> some View {
+        VStack(spacing: 12) {
+            switch content {
+            case .notConnected:
+                Text("Connect your Harvest account to start timers")
+                    .font(.system(size: 15, weight: .semibold))
+                if store.auth.isConnecting {
+                    Text("Waiting for Harvest in your browser…")
+                        .foregroundStyle(.secondary)
+                } else if let errorMessage = store.errorMessage ?? store.auth.errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button("Connect") { store.auth.connect() }
+                    Button("Open Settings", action: onOpenSettings)
+                }
+            case .loading:
+                ProgressView()
+                    .controlSize(.small)
+                Text("Loading projects…")
+                    .foregroundStyle(.secondary)
+            case .loadFailed(let errorMessage):
+                Text("Speedscythe cannot load your projects")
+                    .font(.system(size: 15, weight: .semibold))
+                Text(errorMessage)
+                    .foregroundStyle(.secondary)
+                Button("Try Again") { store.refreshInBackground() }
+            case .noProjects:
+                Text("No projects are assigned to you in Harvest.")
+                    .font(.system(size: 15, weight: .semibold))
+            case .board:
+                EmptyView()
+            }
+        }
+        .font(.system(size: 13))
+        .multilineTextAlignment(.center)
+        .focusable(false)
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+
+    private func columns(board: BoardModel) -> some View {
+        HStack(alignment: .top, spacing: Self.columnGap) {
+            if state.boardState.isEditing {
+                ForEach(0..<preferences.slotCount, id: \.self) { slot in
+                    let column = board.columns.first { $0.slot == slot }
+                    EditSlotView(
+                        number: slot + 1,
+                        column: column,
+                        isPinned: column.map { preferences.pinnedSlots[slot] == $0.project.id } ?? false,
+                        rowCount: board.visibleRowCount,
+                        onPick: { onEdit(.pick(slot: slot)) },
+                        onClear: { onEdit(.clear(slot: slot)) },
+                        onMoveTask: { from, to in onEdit(.moveTask(slot: slot, from: from, to: to)) }
+                    )
+                    .frame(width: columnWidth)
+                }
+            } else {
                 ForEach(Array(board.columns.enumerated()), id: \.element.id) { index, column in
                     ProjectColumnView(
                         store: store,
-                        number: index + 1,
+                        number: column.number,
                         column: column,
                         rowCount: board.visibleRowCount,
                         emphasis: emphasis(for: index),
@@ -40,17 +174,11 @@ struct BoardView: View {
                 }
             }
         }
-        .padding(Self.padding)
-        .frame(width: width(columnCount: board.columns.count))
-        .fixedSize(horizontal: false, vertical: true)
-        .background {
-            ZStack {
-                VisualEffectBackground(cornerRadius: Self.cornerRadius)
-                RoundedRectangle(cornerRadius: Self.cornerRadius)
-                    .fill(Color(nsColor: .windowBackgroundColor).opacity(0.85))
-            }
-        }
-        .overlay(RoundedRectangle(cornerRadius: Self.cornerRadius).strokeBorder(Color(nsColor: .separatorColor)))
+    }
+
+    @MainActor
+    static func columnCount(board: BoardModel, state: BoardState, preferences: Preferences) -> Int {
+        state.isEditing ? preferences.slotCount : board.columns.count
     }
 
     private func emphasis(for column: Int) -> ProjectColumnView.Emphasis {
@@ -67,19 +195,22 @@ struct BoardView: View {
 
     private func width(columnCount: Int) -> CGFloat {
         let columnsWidth = CGFloat(columnCount) * columnWidth + CGFloat(max(columnCount - 1, 0)) * Self.columnGap
-        return max(columnsWidth, 3 * columnWidth + 2 * Self.columnGap) + Self.padding * 2
+        let minColumns = CGFloat(Preferences.slotRange.lowerBound)
+        return max(columnsWidth, minColumns * columnWidth + (minColumns - 1) * Self.columnGap) + Self.padding * 2
     }
 
     private func hint(for board: BoardModel) -> String {
         switch state.boardState {
         case .idle:
-            "\(Self.range(board.columns.count)) project, then \(Self.range(board.maxTaskKeyCount)) task · or click any tile · Esc close"
+            "\(Self.range(board.maxProjectNumber)) project, then \(Self.range(board.maxTaskKeyCount)) task · or click any tile · Esc close"
         case .projectSelected(let column) where board.columns.indices.contains(column):
             "\(board.columns[column].project.name): press \(Self.range(min(9, board.columns[column].tasks.count))) for a task · Esc back"
         case .projectSelected:
             "Esc back"
         case .starting:
             "Starting timer…"
+        case .editing:
+            "Click a column to pick its project · Esc done"
         }
     }
 

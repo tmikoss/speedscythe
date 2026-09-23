@@ -4,14 +4,19 @@ enum BoardState: Equatable {
     case idle
     case projectSelected(column: Int)
     case starting(column: Int, task: Int)
+    case editing
 
     var selectedColumn: Int? {
         switch self {
-        case .idle:
+        case .idle, .editing:
             nil
         case .projectSelected(let column), .starting(let column, _):
             column
         }
+    }
+
+    var isEditing: Bool {
+        self == .editing
     }
 }
 
@@ -21,6 +26,7 @@ enum BoardEvent: Equatable {
     case stopShortcut
     case columnClicked(Int)
     case tileClicked(column: Int, task: Int)
+    case editToggled
     case startSucceeded
     case startFailed
 }
@@ -42,12 +48,18 @@ extension BoardState {
             return (state, nil)
         case (_, .stopShortcut):
             return (state, .stop)
+        case (.editing, .editToggled), (.editing, .escape):
+            return (.idle, nil)
+        case (_, .editToggled):
+            return (.editing, nil)
+        case (.editing, _):
+            return (state, nil)
         case (.idle, .escape):
             return (.idle, .close)
         case (.projectSelected, .escape):
             return (.idle, nil)
         case (.idle, .digit(let digit)):
-            return board.columns.indices.contains(digit - 1) ? (.projectSelected(column: digit - 1), nil) : (state, nil)
+            return board.columnIndex(forNumber: digit).map { (.projectSelected(column: $0), nil) } ?? (state, nil)
         case (.projectSelected(let column), .digit(let digit)):
             guard digit <= 9 else { return (state, nil) }
             return start(column: column, task: digit - 1, from: state, board: board)

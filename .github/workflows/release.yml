@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Set version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+      - name: Build universal Release app
+        run: >
+          xcodebuild -scheme Speedscythe -configuration Release
+          -destination 'generic/platform=macOS'
+          -derivedDataPath build
+          ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO
+          MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+          build
+      - name: Ad-hoc sign
+        run: codesign --force --deep --sign - build/Build/Products/Release/Speedscythe.app
+      - name: Package
+        run: ditto -c -k --keepParent build/Build/Products/Release/Speedscythe.app "Speedscythe-$VERSION.zip"
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "Speedscythe-$VERSION.zip" --title "Speedscythe $VERSION" --generate-notes
