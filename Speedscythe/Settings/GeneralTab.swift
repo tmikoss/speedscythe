@@ -12,9 +12,9 @@ struct GeneralTab: View {
         Form {
             Section("Shortcuts") {
                 KeyboardShortcuts.Recorder("Open picker", name: .openPicker)
-                KeyboardShortcuts.Recorder("Stop timer in the panel", name: .stopTimer)
-                KeyboardShortcuts.Recorder("Edit notes in the panel", name: .editNotes)
-                KeyboardShortcuts.Recorder("Start the last task in the panel", name: .startLastTask)
+                PanelShortcutRecorder("Stop timer in the panel", name: .stopTimer)
+                PanelShortcutRecorder("Edit notes in the panel", name: .editNotes)
+                PanelShortcutRecorder("Start the last task in the panel", name: .startLastTask)
                 HStack {
                     Spacer()
                     Button("Reset shortcuts") { KeyboardShortcuts.reset(.openPicker, .stopTimer, .editNotes, .startLastTask) }

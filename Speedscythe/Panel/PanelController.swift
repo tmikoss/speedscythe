@@ -39,7 +39,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private static let naturalColumnWidth: CGFloat = 164
     private static let minColumnWidth: CGFloat = 120
     private static let screenMargin: CGFloat = 80
-    private static let digitKeyCodes: [UInt16: Int] = [
+    static let digitKeyCodes: [UInt16: Int] = [
         18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9,
         83: 1, 84: 2, 85: 3, 86: 4, 87: 5, 88: 6, 89: 7, 91: 8, 92: 9,
     ]
