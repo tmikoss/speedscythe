@@ -110,6 +110,34 @@ final class BoardStateTests: XCTestCase {
         XCTAssertTrue(BoardState.reduce(.starting(column: 0, task: 0), .notesShortcut, board: board) == (.starting(column: 0, task: 0), nil))
     }
 
+    func testLastTaskShortcutStartsTheTileOnTheBoard() {
+        XCTAssertTrue(BoardState.reduce(.idle, .lastTaskShortcut(projectID: 300, taskID: 305), board: board) == (.starting(column: 2, task: 4), .start(projectID: 300, taskID: 305)))
+        XCTAssertTrue(BoardState.reduce(.projectSelected(column: 0), .lastTaskShortcut(projectID: 200, taskID: 201), board: board) == (.starting(column: 1, task: 0), .start(projectID: 200, taskID: 201)))
+    }
+
+    func testLastTaskShortcutStartsATaskThatIsNotOnTheBoard() {
+        XCTAssertTrue(BoardState.reduce(.idle, .lastTaskShortcut(projectID: 900, taskID: 901), board: board) == (.startingOffBoard, .start(projectID: 900, taskID: 901)))
+        XCTAssertTrue(BoardState.reduce(.idle, .lastTaskShortcut(projectID: 100, taskID: 999), board: board) == (.startingOffBoard, .start(projectID: 100, taskID: 999)))
+    }
+
+    func testLastTaskShortcutIsIgnoredInEditModeNotesAndWhileStarting() {
+        let event = BoardEvent.lastTaskShortcut(projectID: 100, taskID: 101)
+        for state in [BoardState.editing, .editingNotes, .savingNotes, .starting(column: 0, task: 0), .startingOffBoard] {
+            XCTAssertTrue(BoardState.reduce(state, event, board: board) == (state, nil), "\(state)")
+        }
+    }
+
+    func testStartingOffBoardIgnoresInput() {
+        for event in [BoardEvent.digit(1), .escape, .stopShortcut, .columnClicked(1), .tileClicked(column: 1, task: 0), .editToggled, .notesShortcut] {
+            XCTAssertTrue(BoardState.reduce(.startingOffBoard, event, board: board) == (.startingOffBoard, nil), "\(event)")
+        }
+    }
+
+    func testStartingOffBoardClosesOnSuccessAndReturnsToIdleOnFailure() {
+        XCTAssertTrue(BoardState.reduce(.startingOffBoard, .startSucceeded, board: board) == (.idle, .close))
+        XCTAssertTrue(BoardState.reduce(.startingOffBoard, .startFailed, board: board) == (.idle, nil))
+    }
+
     func testEscapeCancelsNotes() {
         XCTAssertTrue(BoardState.reduce(.editingNotes, .escape, board: board) == (.idle, nil))
     }

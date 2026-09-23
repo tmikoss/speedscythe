@@ -191,7 +191,7 @@ Sample names and times in the sketches are placeholders.
 |---|---|
 | Idle | Standard tile |
 | Running | Accent fill + accent border, elapsed time in accent (top right) |
-| Has an entry today | Teal "Today h:mm" top right. Selecting it continues that entry (if the setting is on) |
+| Has an entry today | Teal "h:mm" top right. Selecting it continues that entry (if the setting is on) |
 | Column selected (after project digit) | Column gets a subtle fill + border; its key caps invert (solid); other columns dim to ~35–40% opacity |
 | Starting | Tile shows a small spinner in place of status text; input ignored until it resolves |
 | Hover | Slightly raised fill |
@@ -206,7 +206,7 @@ Add these color sets to `Assets.xcassets` with Any/Dark variants:
 | `RunningAccent` | `#D98B1A` | `#F0A843` | dot, running border |
 | `RunningText` | `#9A5A00` | `#F0A843` | elapsed time text |
 | `RunningFill` | `#FFF3DF` | `#3A2F1C` | running tile fill |
-| `TodayText` | `#1E7F74` | `#5CC2B5` | "Today h:mm" |
+| `TodayText` | `#1E7F74` | `#5CC2B5` | today's "h:mm" |
 
 Text contrast must stay ≥ 4.5:1 in both themes.
 
@@ -240,6 +240,14 @@ The user sets the notes of the running entry in the panel.
 - The save goes to the entry that ran when the user pressed the shortcut. If that timer stops during typing, the notes still go to that entry.
 - The idle hint adds "· N notes" (the current shortcut) while a timer runs.
 
+### 4.9 Last task
+The user starts the last task again with one key in the panel.
+- The shortcut is `KeyboardShortcuts.Name.startLastTask`, default `T`. It works only in the panel, in the same way as the stop and notes shortcuts.
+- The last task is the task of the most recently updated recent entry of an active project. When a timer runs, the app skips entries with the task of the running entry. Thus, `T` switches back to the task before the running one.
+- The tile of the last task shows a second key cap with the shortcut, after the task number.
+- If no tile shows the last task, the shortcut still starts it. No key cap shows in this case.
+- The shortcut does nothing when no recent entry qualifies.
+
 ---
 
 ## 5. Keyboard and mouse
@@ -264,6 +272,7 @@ Handle keys with an `NSEvent.addLocalMonitorForEvents(matching: .keyDown)` monit
 - The pencil button toggles `editing` from `idle` or `projectSelected`. In `editing`, Esc or the pencil button goes back to `idle`, and digits and clicks do nothing (§4.7).
 - The notes shortcut goes from `idle` or `projectSelected` to `editingNotes` while a timer runs (§4.8). In `editingNotes`, Esc goes back to `idle`, and Return or keypad Enter goes to `savingNotes`. `savingNotes` goes to `idle` and closes the panel on success, or back to `editingNotes` on failure. Both states ignore all other events, including the stop shortcut.
 - In `editingNotes`, the key monitor consumes only Esc, Return, and keypad Enter. All other keys go to the text field. This is necessary because the stop shortcut is plain `⌫`, which the user also needs to delete text. In `savingNotes`, the key monitor consumes all keys.
+- The last-task shortcut starts the last task from `idle` or `projectSelected` (§4.9). If the task has a tile, the state goes to `starting(p, t)`. If not, it goes to `startingOffBoard`, which acts like `starting` without a tile spinner. Edit mode, the notes states, and both starting states ignore the shortcut.
 - `/` → search (M6, optional; see §9).
 - Mouse: clicking any tile starts it from any state. Clicking a column header = pressing its digit.
 
@@ -358,7 +367,7 @@ The layout follows System Settings: a `NavigationSplitView` with a sidebar of pa
 
 - **Account:** "Harvest" section with "Connected as <name> · <account>", "Connection expires" (relative date), a warning when less than 24 h remain (§6.4), and buttons Connect, or Disconnect and Reconnect.
 - **General:**
-  - "Shortcuts" section: "Open picker", "Stop timer in the panel", and "Edit notes in the panel" (`KeyboardShortcuts.Recorder` for `.openPicker`, `.stopTimer`, and `.editNotes`), and a "Reset shortcuts" button. The button resets all three shortcuts to their defaults. The Recorder accepts only shortcuts with a modifier, and ⌫ in the Recorder clears the shortcut. The button is the only way back to the plain `⌫` default.
+  - "Shortcuts" section: "Open picker", "Stop timer in the panel", "Edit notes in the panel", and "Start the last task in the panel" (`KeyboardShortcuts.Recorder` for `.openPicker`, `.stopTimer`, `.editNotes`, and `.startLastTask`), and a "Reset shortcuts" button. The button resets all four shortcuts to their defaults. The Recorder accepts only shortcuts with a modifier, and ⌫ in the Recorder clears the shortcut. The button is the only way back to the plain `⌫` default.
   - "Timers" section: toggle "Continue the matching entry from today" (default on), with the subtitle "Off: every start creates a new entry."
   - "Startup" section: "Launch at login" via `SMAppService.mainApp` (spike S8). If the status is `.requiresApproval`, a note tells the user to allow Speedscythe in System Settings → General → Login Items. A `register()` or `unregister()` error shows below the toggle.
 

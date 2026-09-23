@@ -4,13 +4,14 @@ enum BoardState: Equatable {
     case idle
     case projectSelected(column: Int)
     case starting(column: Int, task: Int)
+    case startingOffBoard
     case editing
     case editingNotes
     case savingNotes
 
     var selectedColumn: Int? {
         switch self {
-        case .idle, .editing, .editingNotes, .savingNotes:
+        case .idle, .startingOffBoard, .editing, .editingNotes, .savingNotes:
             nil
         case .projectSelected(let column), .starting(let column, _):
             column
@@ -36,6 +37,7 @@ enum BoardEvent: Equatable {
     case startSucceeded
     case startFailed
     case notesShortcut
+    case lastTaskShortcut(projectID: Int, taskID: Int)
     case submit
     case notesSaved
     case notesFailed
@@ -51,11 +53,11 @@ enum BoardEffect: Equatable {
 extension BoardState {
     static func reduce(_ state: BoardState, _ event: BoardEvent, board: BoardModel) -> (BoardState, BoardEffect?) {
         switch (state, event) {
-        case (.starting, .startSucceeded):
+        case (.starting, .startSucceeded), (.startingOffBoard, .startSucceeded):
             return (.idle, .close)
-        case (.starting, .startFailed):
+        case (.starting, .startFailed), (.startingOffBoard, .startFailed):
             return (.idle, nil)
-        case (.starting, _), (_, .startSucceeded), (_, .startFailed):
+        case (.starting, _), (.startingOffBoard, _), (_, .startSucceeded), (_, .startFailed):
             return (state, nil)
         case (.savingNotes, .notesSaved):
             return (.idle, .close)
@@ -81,6 +83,12 @@ extension BoardState {
             return (.editing, nil)
         case (.editing, _):
             return (state, nil)
+        case (_, .lastTaskShortcut(let projectID, let taskID)):
+            guard let column = board.columns.firstIndex(where: { $0.project.id == projectID }),
+                  let task = board.columns[column].tasks.firstIndex(where: { $0.id == taskID }) else {
+                return (.startingOffBoard, .start(projectID: projectID, taskID: taskID))
+            }
+            return start(column: column, task: task, from: state, board: board)
         case (.idle, .escape):
             return (.idle, .close)
         case (.projectSelected, .escape):

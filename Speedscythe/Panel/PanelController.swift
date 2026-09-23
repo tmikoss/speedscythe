@@ -282,6 +282,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let shortcut, shortcut == KeyboardShortcuts.getShortcut(for: .editNotes), store.runningEntry != nil {
             return .notesShortcut
         }
+        if let shortcut, shortcut == KeyboardShortcuts.getShortcut(for: .startLastTask), let entry = store.lastTaskEntry {
+            return .lastTaskShortcut(projectID: entry.project.id, taskID: entry.task.id)
+        }
         if modifiers.isEmpty, let digit = Self.digitKeyCodes[event.keyCode] {
             return .digit(digit)
         }

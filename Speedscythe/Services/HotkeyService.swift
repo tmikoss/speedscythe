@@ -5,6 +5,7 @@ extension KeyboardShortcuts.Name {
     // No handler is attached to these names, so KeyboardShortcuts never registers them globally. PanelController matches them in the panel only.
     static let stopTimer = Self("stopTimer", initial: .init(.delete))
     static let editNotes = Self("editNotes", initial: .init(.n))
+    static let startLastTask = Self("startLastTask", initial: .init(.t))
 }
 
 @MainActor

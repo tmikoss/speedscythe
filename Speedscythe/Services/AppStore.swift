@@ -28,6 +28,14 @@ final class AppStore {
         )
     }
 
+    var lastTaskEntry: TimeEntry? {
+        Self.lastTaskEntry(
+            entries: recentEntries,
+            runningEntry: runningEntry,
+            activeProjectIDs: Set(assignments.filter(\.isActive).map(\.project.id))
+        )
+    }
+
     @ObservationIgnored private let cache = CacheStore(fileURL: CacheStore.defaultFileURL)
     @ObservationIgnored private var needsAnotherRefresh = false
     @ObservationIgnored private var refreshTimer: Timer?
@@ -142,6 +150,15 @@ final class AppStore {
         return latestUpdate
             .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
             .map(\.key)
+    }
+
+    static func lastTaskEntry(entries: [TimeEntry], runningEntry: TimeEntry?, activeProjectIDs: Set<Int>) -> TimeEntry? {
+        entries
+            .filter { entry in
+                activeProjectIDs.contains(entry.project.id)
+                    && (entry.project.id != runningEntry?.project.id || entry.task.id != runningEntry?.task.id)
+            }
+            .max { $0.updatedAt < $1.updatedAt }
     }
 
     private func sessionChanged() {

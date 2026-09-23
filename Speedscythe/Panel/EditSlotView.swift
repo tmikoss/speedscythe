@@ -98,7 +98,7 @@ struct EditSlotView: View {
     }
 
     private func tile(_ task: HarvestTask, row: Int) -> some View {
-        TaskTileView(number: nil, task: task, status: .idle, invertsKeyCap: false, showsDragHandle: isPinned, onClick: onPick)
+        TaskTileView(number: nil, shortcut: nil, task: task, status: .idle, invertsKeyCap: false, showsDragHandle: isPinned, onClick: onPick)
             .offset(y: offset(forRow: row))
             .zIndex(drag?.row == row ? 1 : 0)
             .shadow(color: .black.opacity(drag?.row == row ? 0.2 : 0), radius: 8, y: 2)

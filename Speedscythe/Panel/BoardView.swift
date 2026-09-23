@@ -224,7 +224,7 @@ struct BoardView: View {
             "\(board.columns[column].project.name): press \(Self.range(min(9, board.columns[column].tasks.count))) for a task · Esc back"
         case .projectSelected:
             "Esc back"
-        case .starting:
+        case .starting, .startingOffBoard:
             "Starting timer…"
         case .editing:
             "Click a column to pick its project · Esc done"

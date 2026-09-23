@@ -1,3 +1,4 @@
+import KeyboardShortcuts
 import SwiftUI
 
 struct ProjectColumnView: View {
@@ -79,12 +80,18 @@ struct ProjectColumnView: View {
     private func tile(forRow row: Int) -> some View {
         TaskTileView(
             number: row < 9 ? row + 1 : nil,
+            shortcut: lastTaskShortcut(forRow: row),
             task: column.tasks[row],
             status: status(forRow: row),
             invertsKeyCap: emphasis == .selected,
             showsDragHandle: false,
             onClick: { onTileClick(row) }
         )
+    }
+
+    private func lastTaskShortcut(forRow row: Int) -> String? {
+        guard let entry = store.lastTaskEntry, entry.project.id == column.project.id, entry.task.id == column.tasks[row].id else { return nil }
+        return KeyboardShortcuts.getShortcut(for: .startLastTask)?.description
     }
 
     private func status(forRow row: Int) -> TaskTileView.Status {

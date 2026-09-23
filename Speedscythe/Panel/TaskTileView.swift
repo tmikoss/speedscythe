@@ -16,6 +16,7 @@ struct TaskTileView: View {
     static let cornerRadius: CGFloat = 12
 
     let number: Int?
+    let shortcut: String?
     let task: HarvestTask
     let status: Status
     let invertsKeyCap: Bool
@@ -30,6 +31,9 @@ struct TaskTileView: View {
                 HStack(spacing: 8) {
                     if let number {
                         KeyCapView(label: "\(number)", style: invertsKeyCap ? .inverted : .tile)
+                    }
+                    if let shortcut {
+                        KeyCapView(label: shortcut, style: .tile)
                     }
                     if showsDragHandle {
                         Image(systemName: "line.3.horizontal")
@@ -71,7 +75,7 @@ struct TaskTileView: View {
         case .idle:
             EmptyView()
         case .today(let duration):
-            Text("Today \(ElapsedFormat.hoursMinutes(duration))")
+            Text(ElapsedFormat.hoursMinutes(duration))
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(Color("TodayText"))
         case .running(let since):
