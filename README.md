@@ -52,7 +52,7 @@ Click the pencil button on the board, or select "Edit board…" in the menu bar 
 
 ## Build from source
 
-You need Xcode 16 or later and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+You need Xcode 26 or later (KeyboardShortcuts requires Swift tools 6.2) and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```sh
 brew install xcodegen
