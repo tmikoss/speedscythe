@@ -2,11 +2,7 @@
 
 Native macOS menu bar app (Swift, SwiftUI inside AppKit) that starts or continues Harvest timers with a hotkey and two digits.
 
-The full spec and build order is in `docs/PLAN.md`. Read it before writing code. UI sketches are in `docs/sketches/` (look at the PNGs; the HTML files hold the exact sizes and colors).
-
 ## Working rules
-- Build one milestone at a time, in the order in `docs/PLAN.md` §9. Check off a milestone in PLAN.md once its acceptance checks pass, and record spike results in §8.
-- If a decision in PLAN.md turns out to be wrong or blocked, stop and ask. Don't silently redesign.
 - Prefer boring, maintainable code over clever code. The only third-party dependency is KeyboardShortcuts; ask before adding another.
 - Never commit secrets or tokens. The OAuth client ID is public and fine to commit; there is no client secret.
 - Never call the real Harvest API from automated tests.
