@@ -6,6 +6,7 @@ extension KeyboardShortcuts.Name {
     static let stopTimer = Self("stopTimer", initial: .init(.delete))
     static let editNotes = Self("editNotes", initial: .init(.n))
     static let startLastTask = Self("startLastTask", initial: .init(.t))
+    static let searchTasks = Self("searchTasks", initial: .init(.f))
 }
 
 @MainActor

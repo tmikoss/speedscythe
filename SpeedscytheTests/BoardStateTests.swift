@@ -170,6 +170,40 @@ final class BoardStateTests: XCTestCase {
         XCTAssertTrue(BoardState.reduce(.idle, .submit, board: board) == (.idle, nil))
     }
 
+    func testSearchShortcutOpensSearchFromOpenStates() {
+        XCTAssertTrue(BoardState.reduce(.idle, .searchShortcut, board: board) == (.searching, nil))
+        XCTAssertTrue(BoardState.reduce(.projectSelected(column: 1), .searchShortcut, board: board) == (.searching, nil))
+    }
+
+    func testSearchShortcutIsIgnoredInEditModeNotesAndWhileStarting() {
+        for state in [BoardState.editing, .editingNotes, .savingNotes, .starting(column: 0, task: 0), .startingOffBoard] {
+            XCTAssertTrue(BoardState.reduce(state, .searchShortcut, board: board) == (state, nil), "\(state)")
+        }
+    }
+
+    func testEscapeLeavesSearch() {
+        XCTAssertTrue(BoardState.reduce(.searching, .escape, board: board) == (.idle, nil))
+    }
+
+    func testChosenSearchResultStartsTheTileOnTheBoard() {
+        XCTAssertTrue(BoardState.reduce(.searching, .searchResultChosen(projectID: 300, taskID: 305), board: board) == (.starting(column: 2, task: 4), .start(projectID: 300, taskID: 305)))
+    }
+
+    func testChosenSearchResultStartsATaskThatIsNotOnTheBoard() {
+        XCTAssertTrue(BoardState.reduce(.searching, .searchResultChosen(projectID: 900, taskID: 901), board: board) == (.startingOffBoard, .start(projectID: 900, taskID: 901)))
+    }
+
+    func testSearchingIgnoresOtherInput() {
+        let events = [BoardEvent.digit(1), .stopShortcut, .columnClicked(0), .tileClicked(column: 0, task: 0), .editToggled, .notesShortcut, .searchShortcut, .submit, .lastTaskShortcut(projectID: 100, taskID: 101)]
+        for event in events {
+            XCTAssertTrue(BoardState.reduce(.searching, event, board: board) == (.searching, nil), "\(event)")
+        }
+    }
+
+    func testChosenSearchResultIsIgnoredOutsideSearch() {
+        XCTAssertTrue(BoardState.reduce(.idle, .searchResultChosen(projectID: 100, taskID: 101), board: board) == (.idle, nil))
+    }
+
     func testSelectedColumnThatDisappearedIgnoresDigits() {
         let smallerBoard = TestData.board(taskCounts: [3])
         XCTAssertTrue(BoardState.reduce(.projectSelected(column: 2), .digit(1), board: smallerBoard) == (.projectSelected(column: 2), nil))

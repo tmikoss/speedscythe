@@ -8,10 +8,11 @@ enum BoardState: Equatable {
     case editing
     case editingNotes
     case savingNotes
+    case searching
 
     var selectedColumn: Int? {
         switch self {
-        case .idle, .startingOffBoard, .editing, .editingNotes, .savingNotes:
+        case .idle, .startingOffBoard, .editing, .editingNotes, .savingNotes, .searching:
             nil
         case .projectSelected(let column), .starting(let column, _):
             column
@@ -24,6 +25,10 @@ enum BoardState: Equatable {
 
     var showsNotesField: Bool {
         self == .editingNotes || self == .savingNotes
+    }
+
+    var showsSearchField: Bool {
+        self == .searching
     }
 }
 
@@ -38,6 +43,8 @@ enum BoardEvent: Equatable {
     case startFailed
     case notesShortcut
     case lastTaskShortcut(projectID: Int, taskID: Int)
+    case searchShortcut
+    case searchResultChosen(projectID: Int, taskID: Int)
     case submit
     case notesSaved
     case notesFailed
@@ -75,6 +82,16 @@ extension BoardState {
             return (.editingNotes, nil)
         case (_, .notesShortcut):
             return (state, nil)
+        case (.searching, .escape):
+            return (.idle, nil)
+        case (.searching, .searchResultChosen(let projectID, let taskID)):
+            return start(projectID: projectID, taskID: taskID, from: state, board: board)
+        case (.searching, _), (_, .searchResultChosen):
+            return (state, nil)
+        case (.idle, .searchShortcut), (.projectSelected, .searchShortcut):
+            return (.searching, nil)
+        case (_, .searchShortcut):
+            return (state, nil)
         case (_, .stopShortcut):
             return (state, .stop)
         case (.editing, .editToggled), (.editing, .escape):
@@ -84,11 +101,7 @@ extension BoardState {
         case (.editing, _):
             return (state, nil)
         case (_, .lastTaskShortcut(let projectID, let taskID)):
-            guard let column = board.columns.firstIndex(where: { $0.project.id == projectID }),
-                  let task = board.columns[column].tasks.firstIndex(where: { $0.id == taskID }) else {
-                return (.startingOffBoard, .start(projectID: projectID, taskID: taskID))
-            }
-            return start(column: column, task: task, from: state, board: board)
+            return start(projectID: projectID, taskID: taskID, from: state, board: board)
         case (.idle, .escape):
             return (.idle, .close)
         case (.projectSelected, .escape):
@@ -103,6 +116,14 @@ extension BoardState {
         case (_, .tileClicked(let column, let task)):
             return start(column: column, task: task, from: state, board: board)
         }
+    }
+
+    private static func start(projectID: Int, taskID: Int, from state: BoardState, board: BoardModel) -> (BoardState, BoardEffect?) {
+        guard let column = board.columns.firstIndex(where: { $0.project.id == projectID }),
+              let task = board.columns[column].tasks.firstIndex(where: { $0.id == taskID }) else {
+            return (.startingOffBoard, .start(projectID: projectID, taskID: taskID))
+        }
+        return start(column: column, task: task, from: state, board: board)
     }
 
     private static func start(column: Int, task: Int, from state: BoardState, board: BoardModel) -> (BoardState, BoardEffect?) {

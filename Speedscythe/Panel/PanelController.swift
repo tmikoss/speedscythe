@@ -10,6 +10,15 @@ final class PanelState {
     var errorMessage: String?
     var notesDraft = ""
     var notesEntryID: Int?
+    var searchQuery = ""
+    var searchSelection = 0
+}
+
+extension TaskMatcher {
+    @MainActor
+    static func matches(query: String, store: AppStore) -> [TaskMatch] {
+        matches(query: query, assignments: store.assignments, recentEntries: store.recentEntries, runningEntry: store.runningEntry)
+    }
 }
 
 extension BoardModel {
@@ -113,6 +122,9 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func layout(on screen: NSScreen) {
         let visibleFrame = screen.visibleFrame
+        if state.boardState.showsSearchField, BoardView.content(store: store) != .board {
+            state.boardState = .idle
+        }
         if !store.assignments.isEmpty {
             preferences.recentSlotAssignments = BoardModel.slotResolution(store: store, preferences: preferences).recentSlots
         }
@@ -130,6 +142,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             }
         )
 
+        // Without this layout pass, fittingSize can return the size of the previous content, for example after the search field closes.
+        hostingView.layoutSubtreeIfNeeded()
         let size = hostingView.fittingSize
         panel.setFrame(
             NSRect(x: visibleFrame.midX - size.width / 2, y: visibleFrame.midY - size.height / 2, width: size.width, height: size.height),
@@ -220,10 +234,17 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func handle(_ event: BoardEvent) {
         let (boardState, effect) = BoardState.reduce(state.boardState, event, board: board)
-        let layoutChanged = boardState.isEditing != state.boardState.isEditing || boardState.showsNotesField != state.boardState.showsNotesField
+        let layoutChanged = boardState.isEditing != state.boardState.isEditing
+            || boardState.showsNotesField != state.boardState.showsNotesField
+            || boardState.showsSearchField != state.boardState.showsSearchField
         if boardState == .editingNotes, !state.boardState.showsNotesField, let runningEntry = store.runningEntry {
             state.notesDraft = (runningEntry.notes ?? "").replacingOccurrences(of: "\n", with: " ")
             state.notesEntryID = runningEntry.id
+            panel.makeFirstResponder(hostingView)
+        }
+        if boardState == .searching, !state.boardState.showsSearchField {
+            state.searchQuery = ""
+            state.searchSelection = 0
             panel.makeFirstResponder(hostingView)
         }
         state.boardState = boardState
@@ -285,6 +306,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let shortcut, shortcut == KeyboardShortcuts.getShortcut(for: .startLastTask), let entry = store.lastTaskEntry {
             return .lastTaskShortcut(projectID: entry.project.id, taskID: entry.task.id)
         }
+        if let shortcut, shortcut == KeyboardShortcuts.getShortcut(for: .searchTasks), BoardView.content(store: store) == .board {
+            return .searchShortcut
+        }
         if modifiers.isEmpty, let digit = Self.digitKeyCodes[event.keyCode] {
             return .digit(digit)
         }
@@ -315,6 +339,23 @@ final class PanelController: NSObject, NSWindowDelegate {
                     }
                 case .savingNotes:
                     break
+                case .searching:
+                    let matches = TaskMatcher.matches(query: self.state.searchQuery, store: self.store)
+                    switch event.keyCode {
+                    case 53:
+                        self.handle(.escape)
+                    case 36, 76:
+                        if matches.indices.contains(self.state.searchSelection) {
+                            let match = matches[self.state.searchSelection]
+                            self.handle(.searchResultChosen(projectID: match.project.id, taskID: match.task.id))
+                        }
+                    case 125:
+                        self.state.searchSelection = min(self.state.searchSelection + 1, max(matches.count - 1, 0))
+                    case 126:
+                        self.state.searchSelection = max(self.state.searchSelection - 1, 0)
+                    default:
+                        return true
+                    }
                 default:
                     if let boardEvent = self.boardEvent(for: event) {
                         self.handle(boardEvent)

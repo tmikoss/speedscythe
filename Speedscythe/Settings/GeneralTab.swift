@@ -15,9 +15,10 @@ struct GeneralTab: View {
                 PanelShortcutRecorder("Stop timer in the panel", name: .stopTimer)
                 PanelShortcutRecorder("Edit notes in the panel", name: .editNotes)
                 PanelShortcutRecorder("Start the last task in the panel", name: .startLastTask)
+                PanelShortcutRecorder("Search tasks in the panel", name: .searchTasks)
                 HStack {
                     Spacer()
-                    Button("Reset shortcuts") { KeyboardShortcuts.reset(.openPicker, .stopTimer, .editNotes, .startLastTask) }
+                    Button("Reset shortcuts") { KeyboardShortcuts.reset(.openPicker, .stopTimer, .editNotes, .startLastTask, .searchTasks) }
                 }
             }
             Section("Timers") {

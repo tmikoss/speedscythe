@@ -6,6 +6,7 @@ A macOS menu bar app for [Harvest](https://www.getharvest.com). Speedscythe star
 - Press a project digit, then a task digit. The timer starts, and the board closes.
 - If you already have a stopped entry today for that task, Speedscythe continues that entry.
 - Press `T` to go back to the task before the current one.
+- Press `F` and type part of a project or task name to start any task by name.
 
 Speedscythe requires macOS 14 or later.
 
@@ -34,12 +35,15 @@ The connection is valid for 14 days. Speedscythe keeps the access token in your 
 | `⌃⌥T` | Any app | Open or close the board |
 | `1`–`9` | Board | Select a project column, then a task in that column |
 | `T` | Board | Start the last task again |
+| `F` | Board | Search tasks by name |
 | `N` | Board, while a timer runs | Edit the notes of the running entry |
 | `⌫` | Board | Stop the running timer |
 | Esc | Board | Go back one step, or close the board |
 | Return | Notes field | Save the notes and close the board |
+| `↑` `↓` | Search | Select a result |
+| Return | Search | Start the selected task |
 
-You can change `⌃⌥T`, `T`, `N`, and `⌫` in Settings. The board shortcuts (`T`, `N`, `⌫`) can be plain keys, but not digits, because the digits select projects and tasks.
+You can change `⌃⌥T`, `T`, `F`, `N`, and `⌫` in Settings. The board shortcuts (`T`, `F`, `N`, `⌫`) can be plain keys, but not digits, because the digits select projects and tasks.
 
 You can also use the mouse. Click a tile to start its task. Click a column header to select that project. Click outside the board to close it.
 
@@ -50,6 +54,14 @@ You can also use the mouse. Click a tile to start its task. Click a column heade
 - The `T` key cap marks the last task. When a timer runs, the last task is the task you worked on before the running one.
 - Tasks 1 to 9 have a digit key cap. Tasks 10 and higher have no key cap. Click them to start them.
 - A column shows up to 6 tiles. Scroll in the column to see more.
+
+### Search
+
+Press `F`. A search field opens with a list of up to 6 tasks. Before you type, the list shows your most recent tasks, and the first one is the last task. If you have no recent tasks, the list shows the first tasks of your projects.
+
+Type one or more words. A task matches when each word occurs in its client, project, or task name. Case and accents do not matter. Tasks where your words match the start of a word in a name come first, then the tasks and projects you used most recently. The search includes all projects that are assigned to you, not only the projects on the board.
+
+Press `↑` or `↓` to select a result, and press Return to start it. You can also click a result. Press Esc to close the search.
 
 ### Notes
 
@@ -70,7 +82,7 @@ The menu bar icon shows the elapsed time of the running timer. Its menu shows th
 
 ## Settings
 
-- **Shortcuts:** change the hotkey and the three board shortcuts. "Reset shortcuts" sets all four back to their defaults.
+- **Shortcuts:** change the hotkey and the four board shortcuts. "Reset shortcuts" sets all five back to their defaults.
 - **Timers:** "Continue the matching entry from today" is on by default. When you start a task that already has a stopped entry today, Speedscythe restarts that entry. Turn it off to create a new entry every time.
 - **Startup:** turn on "Launch at login".
 

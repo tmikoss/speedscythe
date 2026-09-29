@@ -32,6 +32,7 @@ struct BoardView: View {
     let onOpenSettings: () -> Void
 
     @FocusState private var notesFocused: Bool
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         let board = BoardModel(store: store, preferences: preferences)
@@ -59,6 +60,24 @@ struct BoardView: View {
                             Task { notesFocused = boardState == .editingNotes }
                         }
                 }
+                if state.boardState.showsSearchField {
+                    TextField("Search tasks", text: $state.searchQuery)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 15))
+                        .focused($searchFocused)
+                        .onChange(of: state.boardState, initial: true) { _, boardState in
+                            Task { searchFocused = boardState == .searching }
+                        }
+                        .onChange(of: state.searchQuery) {
+                            state.searchSelection = 0
+                        }
+                    SearchResultsView(
+                        store: store,
+                        matches: TaskMatcher.matches(query: state.searchQuery, store: store),
+                        selection: state.searchSelection,
+                        onChoose: { match in onEvent(.searchResultChosen(projectID: match.project.id, taskID: match.task.id)) }
+                    )
+                }
                 if let session = store.session, session.expiresSoon(at: .now) {
                     HStack(spacing: 12) {
                         Text("Harvest connection expires soon")
@@ -75,9 +94,11 @@ struct BoardView: View {
                 }
             }
             if content == .board {
-                columns(board: board)
-                    .opacity(state.boardState.showsNotesField ? 0.38 : 1)
-                    .allowsHitTesting(!state.boardState.showsNotesField)
+                if !state.boardState.showsSearchField {
+                    columns(board: board)
+                        .opacity(state.boardState.showsNotesField ? 0.38 : 1)
+                        .allowsHitTesting(!state.boardState.showsNotesField)
+                }
                 Text(hint(for: board))
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
@@ -219,7 +240,7 @@ struct BoardView: View {
     private func hint(for board: BoardModel) -> String {
         switch state.boardState {
         case .idle:
-            "\(Self.range(board.maxProjectNumber)) project, then \(Self.range(board.maxTaskKeyCount)) task · or click any tile\(notesHint) · Esc close"
+            "\(Self.range(board.maxProjectNumber)) project, then \(Self.range(board.maxTaskKeyCount)) task · or click any tile\(searchHint)\(notesHint) · Esc close"
         case .projectSelected(let column) where board.columns.indices.contains(column):
             "\(board.columns[column].project.name): press \(Self.range(min(9, board.columns[column].tasks.count))) for a task · Esc back"
         case .projectSelected:
@@ -232,7 +253,14 @@ struct BoardView: View {
             "Enter save · Esc cancel"
         case .savingNotes:
             "Saving notes…"
+        case .searching:
+            "↑↓ select · Enter start · Esc back"
         }
+    }
+
+    private var searchHint: String {
+        guard let shortcut = KeyboardShortcuts.getShortcut(for: .searchTasks) else { return "" }
+        return " · \(shortcut.description) search"
     }
 
     private var notesHint: String {
